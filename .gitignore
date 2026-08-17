@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+backend/.venv/
+backend/data/
+*.db
+.env
+
+# Node
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Env
+.env
+.env.local
+
+# OS / editor
+.DS_Store
