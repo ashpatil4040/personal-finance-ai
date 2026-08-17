@@ -36,13 +36,19 @@ SAMPLE = [
 ]
 
 
-def seed(force: bool = False) -> int:
+def seed(force: bool = False) -> tuple[int, bool]:
+    """Seed sample data. Returns (row_count, did_seed).
+
+    Idempotent: when the table already has rows and ``force`` is False, it
+    leaves the data untouched. ``create_all`` runs first so this works on a
+    brand-new database.
+    """
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
         existing = db.query(Transaction).count()
         if existing and not force:
-            return existing
+            return existing, False
         if force:
             db.query(Transaction).delete()
         for d, desc, amount in SAMPLE:
@@ -55,7 +61,7 @@ def seed(force: bool = False) -> int:
                 )
             )
         db.commit()
-        return db.query(Transaction).count()
+        return db.query(Transaction).count(), True
     finally:
         db.close()
 
@@ -64,15 +70,8 @@ if __name__ == "__main__":
     import sys
 
     force = "--force" in sys.argv[1:]
-    before = None
-    if not force:
-        db = SessionLocal()
-        try:
-            before = db.query(Transaction).count()
-        finally:
-            db.close()
-    count = seed(force=force)
-    if before:
-        print(f"Database already has {count} transactions; seed skipped.")
-    else:
+    count, did_seed = seed(force=force)
+    if did_seed:
         print(f"Seeded database with {count} transactions.")
+    else:
+        print(f"Database already has {count} transactions; seed skipped.")
