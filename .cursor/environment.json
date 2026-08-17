@@ -5,7 +5,7 @@
   "terminals": [
     {
       "name": "backend",
-      "command": "cd backend && source .venv/bin/activate && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+      "command": "cd backend && source .venv/bin/activate && PFAI_LLM_ENABLED=true uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
     },
     {
       "name": "frontend",
