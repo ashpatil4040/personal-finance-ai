@@ -1,15 +1,20 @@
-"""Seed the database with realistic sample transactions for demos and testing."""
+"""Seed a demo user with an account and sample transactions.
+
+Idempotent: if the demo user already exists it does nothing (unless --force).
+Runs create_all first so it works on a brand-new database.
+"""
 
 from __future__ import annotations
 
 from datetime import date
 
-from .ai import categorize
+from .auth import hash_password
+from .categorize import categorize
+from .config import get_settings
 from .database import Base, SessionLocal, engine
-from .models import Transaction
+from .models import Account, Transaction, User
 
 SAMPLE = [
-    # (date, description, amount)
     (date(2026, 6, 1), "Monthly Salary Payroll", 4200.00),
     (date(2026, 6, 2), "Rent - Landlord", -1500.00),
     (date(2026, 6, 3), "Whole Foods Market", -132.45),
@@ -36,24 +41,38 @@ SAMPLE = [
 ]
 
 
-def seed(force: bool = False) -> tuple[int, bool]:
-    """Seed sample data. Returns (row_count, did_seed).
-
-    Idempotent: when the table already has rows and ``force`` is False, it
-    leaves the data untouched. ``create_all`` runs first so this works on a
-    brand-new database.
-    """
+def seed(force: bool = False) -> tuple[str, bool]:
+    """Ensure a demo user with sample data exists. Returns (email, did_seed)."""
     Base.metadata.create_all(bind=engine)
+    settings = get_settings()
     db = SessionLocal()
     try:
-        existing = db.query(Transaction).count()
-        if existing and not force:
-            return existing, False
-        if force:
-            db.query(Transaction).delete()
+        user = db.query(User).filter(User.email == settings.demo_email).first()
+        if user and not force:
+            return settings.demo_email, False
+        if user and force:
+            db.delete(user)  # cascades to accounts/transactions
+            db.commit()
+
+        user = User(
+            email=settings.demo_email,
+            hashed_password=hash_password(settings.demo_password),
+            full_name="Demo User",
+        )
+        db.add(user)
+        db.flush()
+
+        account = Account(
+            user_id=user.id, name="Everyday Checking", type="checking", institution="Demo Bank"
+        )
+        db.add(account)
+        db.flush()
+
         for d, desc, amount in SAMPLE:
             db.add(
                 Transaction(
+                    user_id=user.id,
+                    account_id=account.id,
                     date=d,
                     description=desc,
                     amount=amount,
@@ -61,7 +80,7 @@ def seed(force: bool = False) -> tuple[int, bool]:
                 )
             )
         db.commit()
-        return db.query(Transaction).count(), True
+        return settings.demo_email, True
     finally:
         db.close()
 
@@ -70,8 +89,8 @@ if __name__ == "__main__":
     import sys
 
     force = "--force" in sys.argv[1:]
-    count, did_seed = seed(force=force)
+    email, did_seed = seed(force=force)
     if did_seed:
-        print(f"Seeded database with {count} transactions.")
+        print(f"Seeded demo user {email} with a sample account and transactions.")
     else:
-        print(f"Database already has {count} transactions; seed skipped.")
+        print(f"Demo user {email} already exists; seed skipped.")
