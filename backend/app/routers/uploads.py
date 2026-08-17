@@ -36,8 +36,8 @@ def _extract_rows(filename: str, content: bytes) -> tuple[list[dict], str]:
                 return rows, "pdf-llm"
         raise CSVParseError(
             "Could not read transactions from this PDF. If it is an unusual "
-            "format, enable AI extraction (set PFAI_LLM_ENABLED with AWS Bedrock "
-            "credentials) and try again."
+            "format, enable AI extraction (set PFAI_LLM_ENABLED with an OpenAI "
+            "API key) and try again."
         )
 
     raise CSVParseError("Unsupported file type. Upload a .csv or .pdf statement.")

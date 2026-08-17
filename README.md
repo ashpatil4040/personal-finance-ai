@@ -7,8 +7,8 @@ This repository implements **Phases 1–2** of the [project plan](#roadmap): a
 multi-user foundation plus statement ingestion (CSV and PDF), with a modern
 dashboard. Categorization/insights are transparent rule-based heuristics (no
 external keys required). PDF ingestion additionally has an **optional
-LLM-assisted fallback** (AWS Bedrock/Claude) that activates only when
-credentials are provided. Later phases add a LangGraph multi-agent advisory
+LLM-assisted fallback** (OpenAI) that activates only when an API key is
+provided. Later phases add a LangGraph multi-agent advisory
 system and RAG behind the same interfaces.
 
 ## Stack
@@ -17,7 +17,7 @@ system and RAG behind the same interfaces.
 | -------- | ----------------------------------------------------------- |
 | Backend  | Python 3.12 · FastAPI · SQLAlchemy · **PostgreSQL + pgvector** |
 | Auth     | JWT (OAuth2 bearer) with strict per-user data isolation     |
-| Ingestion| CSV (pandas) + PDF (pdfplumber), optional LLM fallback (Bedrock) |
+| Ingestion| CSV (pandas) + PDF (pdfplumber), optional LLM fallback (OpenAI) |
 | Frontend | React 18 · TypeScript · Vite · **Tailwind + shadcn/ui** · Recharts |
 
 ## Project layout
@@ -108,21 +108,19 @@ Amount convention: negative = spending, positive = income.
 ## Roadmap
 
 - **Phase 1** ✅ — foundation: Postgres data model, JWT auth, CSV ingestion, dashboard.
-- **Phase 2** ✅ — ingestion intelligence: PDF statement parsing (pdfplumber) plus an optional LLM-assisted extraction fallback (AWS Bedrock/Claude) for messy formats.
+- **Phase 2** ✅ — ingestion intelligence: PDF statement parsing (pdfplumber) plus an optional LLM-assisted extraction fallback (OpenAI) for messy formats.
 - **Phase 3+** — LangGraph analytics/advisory multi-agent system and Personal/Knowledge RAG over pgvector.
 
 ### Enabling the LLM fallback (optional)
 
-PDF parsing works without any keys. To turn on the AWS Bedrock fallback for
+PDF parsing works without any keys. To turn on the OpenAI fallback for
 statements the heuristic parser can't read, set these environment variables and
 restart the backend:
 
 ```bash
 PFAI_LLM_ENABLED=true
-AWS_ACCESS_KEY_ID=...          # standard AWS credential chain
-AWS_SECRET_ACCESS_KEY=...
-PFAI_AWS_REGION=us-east-1
-# optional: PFAI_BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20240620-v1:0
+OPENAI_API_KEY=sk-...          # standard OpenAI key
+# optional: PFAI_OPENAI_MODEL=gpt-4o-mini
 ```
 
 ## Cloud Agent environment

@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,13 +19,17 @@ class Settings(BaseSettings):
     demo_email: str = "demo@financeai.app"
     demo_password: str = "demo1234"
 
-    # --- Phase 2: LLM-assisted extraction (AWS Bedrock) ---
-    # Off by default so the app runs with no cloud credentials. When enabled and
-    # AWS credentials are present, the PDF upload path falls back to Bedrock for
-    # statements the heuristic parser cannot read.
+    # --- Phase 2: LLM-assisted extraction (OpenAI) ---
+    # Off by default so the app runs with no API key. When enabled and an API key
+    # is present, the PDF upload path falls back to OpenAI for statements the
+    # heuristic parser cannot read.
     llm_enabled: bool = False
-    bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20240620-v1:0"
-    aws_region: str = "us-east-1"
+    openai_model: str = "gpt-4o-mini"
+    # Accepts either PFAI_OPENAI_API_KEY or the standard OPENAI_API_KEY env var.
+    openai_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("PFAI_OPENAI_API_KEY", "OPENAI_API_KEY"),
+    )
 
 
 @lru_cache

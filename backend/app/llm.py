@@ -1,12 +1,13 @@
 """LLM-assisted extraction (Phase 2).
 
-Falls back to AWS Bedrock (Claude) to extract structured transactions from raw
-statement text when the deterministic parsers can't. This is intentionally
-optional: it activates only when ``PFAI_LLM_ENABLED=true`` and AWS credentials
-are available, so the app runs fully without any cloud keys.
+Falls back to OpenAI to extract structured transactions from raw statement text
+when the deterministic parsers can't. This is intentionally optional: it
+activates only when ``PFAI_LLM_ENABLED=true`` and an OpenAI API key is available
+(``OPENAI_API_KEY`` or ``PFAI_OPENAI_API_KEY``), so the app runs fully without
+any key.
 
 The response-parsing logic (``parse_llm_json``) is a pure function so it can be
-unit-tested without calling Bedrock.
+unit-tested without calling the API.
 """
 
 from __future__ import annotations
@@ -32,12 +33,12 @@ JSON:"""
 
 
 def llm_available() -> bool:
-    """True when the LLM fallback is enabled and boto3 is importable."""
+    """True when the LLM fallback is enabled, keyed, and the SDK is importable."""
     settings = get_settings()
-    if not settings.llm_enabled:
+    if not settings.llm_enabled or not settings.openai_api_key:
         return False
     try:
-        import boto3  # noqa: F401
+        import openai  # noqa: F401
     except ImportError:
         return False
     return True
@@ -105,22 +106,20 @@ def parse_llm_json(content: str) -> list[dict]:
 
 
 def extract_transactions_from_text(text: str) -> list[dict]:
-    """Call Bedrock to extract transactions. Returns [] on any failure."""
+    """Call OpenAI to extract transactions. Returns [] on any failure."""
     if not llm_available() or not text.strip():
         return []
-    import boto3
+    from openai import OpenAI
 
     settings = get_settings()
-    client = boto3.client("bedrock-runtime", region_name=settings.aws_region)
-    body = {
-        "anthropic_version": "bedrock-2023-05-31",
-        "max_tokens": 4096,
-        "messages": [{"role": "user", "content": _PROMPT.format(text=text[:12000])}],
-    }
+    client = OpenAI(api_key=settings.openai_api_key)
     try:
-        resp = client.invoke_model(modelId=settings.bedrock_model_id, body=json.dumps(body))
-        payload = json.loads(resp["body"].read())
-        content = "".join(part.get("text", "") for part in payload.get("content", []))
+        resp = client.chat.completions.create(
+            model=settings.openai_model,
+            temperature=0,
+            messages=[{"role": "user", "content": _PROMPT.format(text=text[:12000])}],
+        )
+        content = resp.choices[0].message.content or ""
         return parse_llm_json(content)
     except Exception:  # noqa: BLE001 - fallback must never crash the request
         return []
