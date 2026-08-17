@@ -205,7 +205,7 @@ function DashboardView({
             <CardTitle className="text-base">Recent transactions</CardTitle>
           </CardHeader>
           <CardContent>
-            <TransactionsTable transactions={transactions.slice(0, 6)} />
+            <TransactionsTable transactions={transactions.slice(0, 6)} compact />
           </CardContent>
         </Card>
       </div>

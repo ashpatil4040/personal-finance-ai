@@ -27,9 +27,11 @@ const CATEGORY_TONE: Record<string, string> = {
 export function TransactionsTable({
   transactions,
   onDelete,
+  compact = false,
 }: {
   transactions: Transaction[];
   onDelete?: (id: number) => void;
+  compact?: boolean;
 }) {
   if (!transactions.length) {
     return (
@@ -39,49 +41,56 @@ export function TransactionsTable({
     );
   }
   return (
-    <div className="overflow-x-auto">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Date</TableHead>
-            <TableHead>Description</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead className="text-right">Amount</TableHead>
-            {onDelete && <TableHead className="w-10" />}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {transactions.map((t) => (
-            <TableRow key={t.id}>
+    <Table className="w-full table-fixed">
+      <TableHeader>
+        <TableRow>
+          {!compact && <TableHead className="w-28">Date</TableHead>}
+          <TableHead>Description</TableHead>
+          {!compact && <TableHead className="w-32">Category</TableHead>}
+          <TableHead className="w-28 text-right">Amount</TableHead>
+          {onDelete && <TableHead className="w-10" />}
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {transactions.map((t) => (
+          <TableRow key={t.id}>
+            {!compact && (
               <TableCell className="whitespace-nowrap text-muted-foreground">{formatDate(t.date)}</TableCell>
-              <TableCell className="font-medium">{t.description}</TableCell>
+            )}
+            <TableCell className="max-w-0 truncate font-medium" title={t.description}>
+              {t.description}
+              {compact && (
+                <span className="ml-2 text-xs font-normal text-muted-foreground">{t.category}</span>
+              )}
+            </TableCell>
+            {!compact && (
               <TableCell>
                 <Badge variant="secondary" className={CATEGORY_TONE[t.category] ?? ""}>
                   {t.category}
                 </Badge>
               </TableCell>
-              <TableCell
-                className={`text-right tabular-nums font-medium ${t.amount < 0 ? "text-rose-600" : "text-emerald-600"}`}
-              >
-                {currency(t.amount)}
+            )}
+            <TableCell
+              className={`whitespace-nowrap text-right tabular-nums font-medium ${t.amount < 0 ? "text-rose-600" : "text-emerald-600"}`}
+            >
+              {currency(t.amount)}
+            </TableCell>
+            {onDelete && (
+              <TableCell className="text-right">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 text-muted-foreground hover:text-rose-600"
+                  onClick={() => onDelete(t.id)}
+                  aria-label="Delete transaction"
+                >
+                  <Trash2 className="size-4" />
+                </Button>
               </TableCell>
-              {onDelete && (
-                <TableCell>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-8 text-muted-foreground hover:text-rose-600"
-                    onClick={() => onDelete(t.id)}
-                    aria-label="Delete transaction"
-                  >
-                    <Trash2 className="size-4" />
-                  </Button>
-                </TableCell>
-              )}
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+            )}
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
