@@ -15,5 +15,8 @@ frontend/dist/
 .env
 .env.local
 
+# Testing
+.pytest_cache/
+
 # OS / editor
 .DS_Store

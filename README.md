@@ -3,11 +3,13 @@
 An AI-assisted personal finance app. Upload bank/credit-card statements and get
 automatic categorization, spending breakdowns, and plain-language insights.
 
-This repository implements **Phase 1 (Foundation)** of the
-[project plan](#roadmap): a multi-user foundation with statement ingestion and a
-modern dashboard. The AI layer is currently transparent, rule-based heuristics
-(no external keys required); later phases swap in LLM-assisted categorization and
-a LangGraph multi-agent advisory system behind the same interfaces.
+This repository implements **Phases 1–2** of the [project plan](#roadmap): a
+multi-user foundation plus statement ingestion (CSV and PDF), with a modern
+dashboard. Categorization/insights are transparent rule-based heuristics (no
+external keys required). PDF ingestion additionally has an **optional
+LLM-assisted fallback** (AWS Bedrock/Claude) that activates only when
+credentials are provided. Later phases add a LangGraph multi-agent advisory
+system and RAG behind the same interfaces.
 
 ## Stack
 
@@ -15,7 +17,7 @@ a LangGraph multi-agent advisory system behind the same interfaces.
 | -------- | ----------------------------------------------------------- |
 | Backend  | Python 3.12 · FastAPI · SQLAlchemy · **PostgreSQL + pgvector** |
 | Auth     | JWT (OAuth2 bearer) with strict per-user data isolation     |
-| Ingestion| CSV parsing/normalization via pandas                        |
+| Ingestion| CSV (pandas) + PDF (pdfplumber), optional LLM fallback (Bedrock) |
 | Frontend | React 18 · TypeScript · Vite · **Tailwind + shadcn/ui** · Recharts |
 
 ## Project layout
@@ -94,7 +96,7 @@ statement to try the upload flow lives at `backend/sample_statement.csv`.
 | POST   | `/api/auth/login`          | Log in, returns JWT                      |
 | GET    | `/api/auth/me`             | Current user                             |
 | GET    | `/api/accounts`            | List accounts (scoped to user)          |
-| POST   | `/api/uploads`             | Upload a CSV statement (multipart)       |
+| POST   | `/api/uploads`             | Upload a CSV or PDF statement (multipart) |
 | GET    | `/api/transactions`        | List transactions (filters: category, account) |
 | POST   | `/api/transactions`        | Add a transaction (auto-categorized)     |
 | DELETE | `/api/transactions/{id}`   | Delete a transaction                     |
@@ -105,9 +107,23 @@ Amount convention: negative = spending, positive = income.
 
 ## Roadmap
 
-Phase 1 (this repo): foundation — Postgres data model, JWT auth, CSV ingestion,
-dashboard. Later phases add PDF parsing, LLM-assisted extraction, a LangGraph
-analytics/advisory multi-agent system, and Personal/Knowledge RAG over pgvector.
+- **Phase 1** ✅ — foundation: Postgres data model, JWT auth, CSV ingestion, dashboard.
+- **Phase 2** ✅ — ingestion intelligence: PDF statement parsing (pdfplumber) plus an optional LLM-assisted extraction fallback (AWS Bedrock/Claude) for messy formats.
+- **Phase 3+** — LangGraph analytics/advisory multi-agent system and Personal/Knowledge RAG over pgvector.
+
+### Enabling the LLM fallback (optional)
+
+PDF parsing works without any keys. To turn on the AWS Bedrock fallback for
+statements the heuristic parser can't read, set these environment variables and
+restart the backend:
+
+```bash
+PFAI_LLM_ENABLED=true
+AWS_ACCESS_KEY_ID=...          # standard AWS credential chain
+AWS_SECRET_ACCESS_KEY=...
+PFAI_AWS_REGION=us-east-1
+# optional: PFAI_BEDROCK_MODEL_ID=anthropic.claude-3-5-sonnet-20240620-v1:0
+```
 
 ## Cloud Agent environment
 

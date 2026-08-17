@@ -76,6 +76,8 @@ class UploadResult(BaseModel):
     filename: str
     imported: int
     account_id: int | None
+    # How the rows were extracted: "csv", "pdf-heuristic", or "pdf-llm".
+    method: str
 
 
 # ---- Insights ----

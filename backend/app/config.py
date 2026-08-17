@@ -18,6 +18,14 @@ class Settings(BaseSettings):
     demo_email: str = "demo@financeai.app"
     demo_password: str = "demo1234"
 
+    # --- Phase 2: LLM-assisted extraction (AWS Bedrock) ---
+    # Off by default so the app runs with no cloud credentials. When enabled and
+    # AWS credentials are present, the PDF upload path falls back to Bedrock for
+    # statements the heuristic parser cannot read.
+    llm_enabled: bool = False
+    bedrock_model_id: str = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+    aws_region: str = "us-east-1"
+
 
 @lru_cache
 def get_settings() -> Settings:
