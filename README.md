@@ -26,31 +26,60 @@ frontend/   React + Vite + shadcn/ui dashboard
 .cursor/    Cloud Agent environment (install.sh, start.sh, environment.json)
 ```
 
-## Quick start
+## Run on your own computer
 
-Requires PostgreSQL running locally with a `finance` role/database (the Cloud
-Agent `install.sh` sets this up automatically).
+Cross-platform (macOS / Windows / Linux). Prerequisites: **Python 3.12+**,
+**Node 20+**, and **Docker Desktop** (the easiest way to get PostgreSQL +
+pgvector without installing Postgres yourself).
 
-### Backend
+```bash
+git clone <repo-url>
+cd personal-finance-ai
+git checkout cursor/scaffold-personal-finance-ai-env-7441
+```
+
+### 1. Start PostgreSQL (with pgvector)
+
+```bash
+docker compose up -d           # starts Postgres 16 + pgvector on :5432
+```
+
+Already have PostgreSQL installed and prefer not to use Docker? Instead create
+the role/db manually and skip this step:
+
+```sql
+CREATE ROLE finance LOGIN PASSWORD 'finance';
+CREATE DATABASE finance OWNER finance;
+\c finance
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+### 2. Backend
 
 ```bash
 cd backend
-python3 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-# defaults to postgresql+psycopg2://finance:finance@127.0.0.1:5432/finance
-python -m app.seed            # create demo user + sample data (idempotent)
+cp .env.example .env               # optional; defaults already work
+python -m app.seed                 # create demo user + sample data (idempotent)
 uvicorn app.main:app --reload --port 8000
 ```
 
 Interactive API docs at `http://localhost:8000/docs`.
 
-### Frontend
+### 3. Frontend (in a second terminal)
 
 ```bash
 cd frontend
 npm install
-npm run dev                   # http://localhost:5173 (proxies /api to :8000)
+npm run dev                        # http://localhost:5173 (proxies /api to :8000)
 ```
+
+Open `http://localhost:5173` and sign in with the demo login below.
+
+> On Linux you can alternatively run `bash .cursor/install.sh`, which installs
+> Postgres + pgvector via `apt` and both stacks in one step (needs `sudo`).
 
 ### Demo login
 
