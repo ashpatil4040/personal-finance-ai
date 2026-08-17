@@ -59,9 +59,12 @@ def generate_insights(transactions: Iterable) -> dict:
     ]
 
     monthly: dict[str, float] = defaultdict(float)
+    monthly_counts: dict[str, int] = defaultdict(int)
     for t in txns:
         if t.amount < 0:
-            monthly[_month_key(t.date)] += -t.amount
+            key = _month_key(t.date)
+            monthly[key] += -t.amount
+            monthly_counts[key] += 1
     monthly_spending = [
         {"month": m, "amount": round(a, 2)} for m, a in sorted(monthly.items())
     ]
@@ -99,7 +102,10 @@ def generate_insights(transactions: Iterable) -> dict:
 
         if len(monthly_spending) >= 2:
             last, prev = monthly_spending[-1], monthly_spending[-2]
-            if prev["amount"] > 0:
+            # Skip the comparison when the most recent month is still sparse
+            # (a partial month) to avoid misleading swings from a few records.
+            last_is_partial = monthly_counts.get(last["month"], 0) < 3
+            if prev["amount"] > 0 and not last_is_partial:
                 change = (last["amount"] - prev["amount"]) / prev["amount"] * 100
                 trend = "up" if change > 0 else "down"
                 insights.append(
