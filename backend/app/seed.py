@@ -12,7 +12,7 @@ from .auth import hash_password
 from .categorize import categorize
 from .config import get_settings
 from .database import Base, SessionLocal, engine
-from .models import Account, Transaction, User
+from .models import Account, Statement, Transaction, User
 
 SAMPLE = [
     (date(2026, 6, 1), "Monthly Salary Payroll", 4200.00),
@@ -42,7 +42,11 @@ SAMPLE = [
 
 
 def seed(force: bool = False) -> tuple[str, bool]:
-    """Ensure a demo user with sample data exists. Returns (email, did_seed)."""
+    """Ensure a demo user with sample data exists. Returns (email, did_seed).
+
+    On ``force`` the demo user's data is reset but the user row is kept, so its
+    id (and therefore any issued JWTs) stays stable.
+    """
     Base.metadata.create_all(bind=engine)
     settings = get_settings()
     db = SessionLocal()
@@ -50,17 +54,21 @@ def seed(force: bool = False) -> tuple[str, bool]:
         user = db.query(User).filter(User.email == settings.demo_email).first()
         if user and not force:
             return settings.demo_email, False
-        if user and force:
-            db.delete(user)  # cascades to accounts/transactions
-            db.commit()
 
-        user = User(
-            email=settings.demo_email,
-            hashed_password=hash_password(settings.demo_password),
-            full_name="Demo User",
-        )
-        db.add(user)
-        db.flush()
+        if user and force:
+            # Reset the user's data in place, preserving the stable user id.
+            db.query(Transaction).filter(Transaction.user_id == user.id).delete()
+            db.query(Statement).filter(Statement.user_id == user.id).delete()
+            db.query(Account).filter(Account.user_id == user.id).delete()
+            db.flush()
+        else:
+            user = User(
+                email=settings.demo_email,
+                hashed_password=hash_password(settings.demo_password),
+                full_name="Demo User",
+            )
+            db.add(user)
+            db.flush()
 
         account = Account(
             user_id=user.id, name="Everyday Checking", type="checking", institution="Demo Bank"
