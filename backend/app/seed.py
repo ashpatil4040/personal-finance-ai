@@ -11,7 +11,7 @@ from datetime import date
 from .auth import hash_password
 from .categorize import categorize
 from .config import get_settings
-from .database import Base, SessionLocal, engine
+from .database import Base, SessionLocal, ensure_pgvector, engine
 from .models import Account, Statement, Transaction, User
 
 SAMPLE = [
@@ -47,6 +47,10 @@ def seed(force: bool = False) -> tuple[str, bool]:
     On ``force`` the demo user's data is reset but the user row is kept, so its
     id (and therefore any issued JWTs) stays stable.
     """
+    # Ensure the pgvector extension + embedding column exist before create_all,
+    # so seeding is self-sufficient even against an older DB (e.g. a snapshot
+    # created before Phase 4) without needing the app to have started first.
+    ensure_pgvector()
     Base.metadata.create_all(bind=engine)
     settings = get_settings()
     db = SessionLocal()
