@@ -12,11 +12,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, type Insights, type Transaction } from "@/lib/api";
+import { api, type Digest, type Insights, type Transaction } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { AskView } from "./AskView";
 import { CategoryChart, MonthlyChart } from "./Charts";
 import { InsightsPanel } from "./InsightsPanel";
+import { MonthlyDigest } from "./MonthlyDigest";
 import { StatCards } from "./StatCards";
 import { TransactionsTable } from "./TransactionsTable";
 import { UploadCard } from "./UploadCard";
@@ -35,13 +36,19 @@ export function AppShell() {
   const [view, setView] = useState<View>("dashboard");
   const [insights, setInsights] = useState<Insights | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [digest, setDigest] = useState<Digest | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
-      const [ins, txns] = await Promise.all([api.insights(), api.listTransactions()]);
+      const [ins, txns, dig] = await Promise.all([
+        api.insights(),
+        api.listTransactions(),
+        api.digest().catch(() => null),
+      ]);
       setInsights(ins);
       setTransactions(txns);
+      setDigest(dig);
     } catch {
       toast.error("Could not load your data.");
     } finally {
@@ -149,7 +156,7 @@ export function AppShell() {
           ) : loading ? (
             <LoadingState />
           ) : view === "dashboard" ? (
-            <DashboardView insights={insights} transactions={transactions} />
+            <DashboardView insights={insights} transactions={transactions} digest={digest} />
           ) : view === "transactions" ? (
             <Card>
               <CardHeader>
@@ -178,13 +185,16 @@ export function AppShell() {
 function DashboardView({
   insights,
   transactions,
+  digest,
 }: {
   insights: Insights | null;
   transactions: Transaction[];
+  digest: Digest | null;
 }) {
   if (!insights) return null;
   return (
     <div className="space-y-6">
+      {digest?.has_data && <MonthlyDigest digest={digest} />}
       <StatCards summary={insights.summary} />
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">

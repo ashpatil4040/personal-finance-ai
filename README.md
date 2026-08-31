@@ -20,6 +20,7 @@ system and RAG behind the same interfaces.
 | Auth     | JWT (OAuth2 bearer) with strict per-user data isolation     |
 | Ingestion| CSV (pandas) + PDF (pdfplumber), optional LLM fallback (OpenAI) |
 | AI agent | LangGraph ReAct agent (OpenAI) for natural-language Q&A grounded in your data |
+| Personal RAG | Transaction embeddings in pgvector (OpenAI) for semantic search |
 | Frontend | React 18 · TypeScript · Vite · **Tailwind + shadcn/ui** · Recharts |
 
 ## Project layout
@@ -104,6 +105,7 @@ statement to try the upload flow lives at `backend/sample_statement.csv`.
 | DELETE | `/api/transactions/{id}`   | Delete a transaction                     |
 | GET    | `/api/insights`            | Summary, breakdowns, and insights        |
 | POST   | `/api/ask`                 | Ask a natural-language question (LangGraph agent) |
+| GET    | `/api/digest`              | Proactive monthly digest (movers + recommendations) |
 
 All data endpoints require a bearer token and are isolated by `user_id`.
 Amount convention: negative = spending, positive = income.
@@ -112,8 +114,9 @@ Amount convention: negative = spending, positive = income.
 
 - **Phase 1** ✅ — foundation: Postgres data model, JWT auth, CSV ingestion, dashboard.
 - **Phase 2** ✅ — ingestion intelligence: PDF statement parsing (pdfplumber), optional LLM extraction fallback, and LLM-assisted categorization (OpenAI).
-- **Phase 3** ✅ (analytics agent) — a LangGraph ReAct agent answers natural-language questions grounded in your real transactions, via tools: `get_spending_summary`, `query_transactions`, and `calculate_savings_scenario`. Ask from the "Ask AI" tab. Requires the OpenAI key (same `PFAI_LLM_ENABLED` gate).
-- **Phase 4+** — advisory agent + Personal/Knowledge RAG over pgvector and web search.
+- **Phase 3** ✅ (analytics agent) — a LangGraph ReAct agent answers natural-language questions grounded in your real transactions, via tools: `get_spending_summary`, `query_transactions`, and `calculate_savings_scenario`. Ask from the "Ask AI" tab.
+- **Phase 4** ✅ (advisory + Personal RAG) — transaction embeddings in **pgvector** power a `search_similar_transactions` tool for fuzzy/semantic questions, plus a **proactive monthly digest** (`/api/digest`) with month-over-month movers and grounded recommendations, shown on the dashboard. Embeddings/narrative use OpenAI when enabled; the digest degrades to deterministic analysis without a key.
+- **Phase 5+** — multi-agent orchestration, anomaly/fraud detection, Knowledge RAG + web search.
 
 ### Enabling the LLM fallback (optional)
 

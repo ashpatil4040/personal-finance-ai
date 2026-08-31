@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # heuristic parser cannot read.
     llm_enabled: bool = False
     openai_model: str = "gpt-4o-mini"
+    embedding_model: str = "text-embedding-3-small"
     # Accepts either PFAI_OPENAI_API_KEY or the standard OPENAI_API_KEY env var.
     openai_api_key: str = Field(
         default="",

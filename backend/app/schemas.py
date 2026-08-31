@@ -115,3 +115,11 @@ class AskResponse(BaseModel):
     answer: str
     tools_used: list[str] = []
     grounded: bool = True
+
+
+# ---- Monthly digest (Phase 4 advisory) ----
+class DigestResponse(BaseModel):
+    has_data: bool
+    narrative: str
+    recommendations: list[str] = []
+    facts: dict = {}

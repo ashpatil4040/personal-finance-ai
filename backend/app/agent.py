@@ -17,6 +17,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from sqlalchemy.orm import Session
 
+from . import rag
 from .categorize import generate_insights
 from .config import get_settings
 from .models import Transaction
@@ -123,7 +124,29 @@ def make_tools(db: Session, user_id: int):
             "months_of_data": n_months,
         }
 
-    return [get_spending_summary, query_transactions, calculate_savings_scenario]
+    @tool
+    def search_similar_transactions(query: str, k: int = 5) -> list[dict]:
+        """Semantically search the user's transactions by meaning (Personal RAG),
+        not just exact keywords. Use for fuzzy questions like "recurring
+        subscriptions", "coffee runs", or "anything like insurance". Returns the
+        most similar transactions."""
+        rows = rag.search_similar(db, user_id, query, k=k)
+        return [
+            {
+                "date": t.date.isoformat(),
+                "description": t.description,
+                "amount": t.amount,
+                "category": t.category,
+            }
+            for t in rows
+        ]
+
+    return [
+        get_spending_summary,
+        query_transactions,
+        calculate_savings_scenario,
+        search_similar_transactions,
+    ]
 
 
 def build_agent(db: Session, user_id: int):
