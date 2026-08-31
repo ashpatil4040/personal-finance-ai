@@ -104,3 +104,14 @@ class InsightsResponse(BaseModel):
     spending_by_category: list[CategoryAmount]
     monthly_spending: list[MonthlyAmount]
     insights: list[str]
+
+
+# ---- Ask (Phase 3 agent) ----
+class AskRequest(BaseModel):
+    question: str = Field(..., min_length=1, max_length=500)
+
+
+class AskResponse(BaseModel):
+    answer: str
+    tools_used: list[str] = []
+    grounded: bool = True
