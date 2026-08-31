@@ -50,6 +50,12 @@ export interface UploadResult {
   method: string;
 }
 
+export interface AskResponse {
+  answer: string;
+  tools_used: string[];
+  grounded: boolean;
+}
+
 const TOKEN_KEY = "pfai_token";
 
 export const tokenStore = {
@@ -117,6 +123,12 @@ export const api = {
     request<void>(`/api/transactions/${id}`, { method: "DELETE" }),
 
   insights: () => request<Insights>("/api/insights"),
+
+  ask: (question: string) =>
+    request<AskResponse>("/api/ask", {
+      method: "POST",
+      body: JSON.stringify({ question }),
+    }),
 
   upload: (file: File, accountId?: number | null) => {
     const form = new FormData();

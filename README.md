@@ -19,6 +19,7 @@ system and RAG behind the same interfaces.
 | Backend  | Python 3.12 · FastAPI · SQLAlchemy · **PostgreSQL + pgvector** |
 | Auth     | JWT (OAuth2 bearer) with strict per-user data isolation     |
 | Ingestion| CSV (pandas) + PDF (pdfplumber), optional LLM fallback (OpenAI) |
+| AI agent | LangGraph ReAct agent (OpenAI) for natural-language Q&A grounded in your data |
 | Frontend | React 18 · TypeScript · Vite · **Tailwind + shadcn/ui** · Recharts |
 
 ## Project layout
@@ -102,6 +103,7 @@ statement to try the upload flow lives at `backend/sample_statement.csv`.
 | POST   | `/api/transactions`        | Add a transaction (auto-categorized)     |
 | DELETE | `/api/transactions/{id}`   | Delete a transaction                     |
 | GET    | `/api/insights`            | Summary, breakdowns, and insights        |
+| POST   | `/api/ask`                 | Ask a natural-language question (LangGraph agent) |
 
 All data endpoints require a bearer token and are isolated by `user_id`.
 Amount convention: negative = spending, positive = income.
@@ -109,8 +111,9 @@ Amount convention: negative = spending, positive = income.
 ## Roadmap
 
 - **Phase 1** ✅ — foundation: Postgres data model, JWT auth, CSV ingestion, dashboard.
-- **Phase 2** ✅ — ingestion intelligence: PDF statement parsing (pdfplumber) plus an optional LLM-assisted extraction fallback (OpenAI) for messy formats.
-- **Phase 3+** — LangGraph analytics/advisory multi-agent system and Personal/Knowledge RAG over pgvector.
+- **Phase 2** ✅ — ingestion intelligence: PDF statement parsing (pdfplumber), optional LLM extraction fallback, and LLM-assisted categorization (OpenAI).
+- **Phase 3** ✅ (analytics agent) — a LangGraph ReAct agent answers natural-language questions grounded in your real transactions, via tools: `get_spending_summary`, `query_transactions`, and `calculate_savings_scenario`. Ask from the "Ask AI" tab. Requires the OpenAI key (same `PFAI_LLM_ENABLED` gate).
+- **Phase 4+** — advisory agent + Personal/Knowledge RAG over pgvector and web search.
 
 ### Enabling the LLM fallback (optional)
 
