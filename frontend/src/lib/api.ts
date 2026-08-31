@@ -56,6 +56,22 @@ export interface AskResponse {
   grounded: boolean;
 }
 
+export interface Digest {
+  has_data: boolean;
+  narrative: string;
+  recommendations: string[];
+  facts: {
+    month?: string;
+    previous_month?: string | null;
+    total_spending?: number;
+    spend_change_pct?: number | null;
+    savings_rate?: number | null;
+    top_category?: { category: string; amount: number } | null;
+    category_movers?: { category: string; delta: number }[];
+    largest_transactions?: { description: string; amount: number; category: string }[];
+  };
+}
+
 const TOKEN_KEY = "pfai_token";
 
 export const tokenStore = {
@@ -129,6 +145,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ question }),
     }),
+
+  digest: () => request<Digest>("/api/digest"),
 
   upload: (file: File, accountId?: number | null) => {
     const form = new FormData();

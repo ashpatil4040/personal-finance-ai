@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import date as date_type
 from datetime import datetime
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     DateTime,
     Date,
@@ -15,6 +16,9 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
+
+# text-embedding-3-small dimensionality (Phase 4 Personal RAG).
+EMBEDDING_DIM = 1536
 
 
 class User(Base):
@@ -70,3 +74,5 @@ class Transaction(Base):
     amount: Mapped[float] = mapped_column(Float, nullable=False)
     category: Mapped[str] = mapped_column(String(64), nullable=False, default="Uncategorized")
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    # Personal RAG embedding of the description (nullable; filled when LLM is on).
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)

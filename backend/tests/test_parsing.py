@@ -5,10 +5,21 @@ from __future__ import annotations
 import os
 from datetime import date
 
+from dataclasses import dataclass
+
 from app.categorize import CATEGORIES, categorize_batch, rule_categorize
+from app.digest import _deterministic_narrative, compute_facts_from_txns
 from app.ingest import parse_csv
 from app.llm import parse_category_list, parse_llm_json
 from app.pdf_ingest import parse_pdf_heuristic
+
+
+@dataclass
+class _T:
+    date: date
+    amount: float
+    category: str
+    description: str = "x"
 
 SAMPLE_PDF = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sample_statement.pdf")
 
@@ -88,3 +99,31 @@ def test_categorize_batch_falls_back_to_rules_without_llm():
     assert cats[0] == "Dining"
     assert cats[1] == "Income"
     assert cats[2] == rule_categorize("Zzzxyz Unknownmerchant", -10.0)
+
+
+def test_digest_month_over_month_facts():
+    txns = [
+        # June: 100 dining
+        _T(date(2026, 6, 5), -100.0, "Dining"),
+        _T(date(2026, 6, 1), 3000.0, "Income"),
+        # July: 100 dining + 250 shopping (shopping is new; spending up)
+        _T(date(2026, 7, 5), -100.0, "Dining"),
+        _T(date(2026, 7, 10), -250.0, "Shopping"),
+        _T(date(2026, 7, 1), 3000.0, "Income"),
+    ]
+    f = compute_facts_from_txns(txns)
+    assert f["has_data"] is True
+    assert f["month"] == "2026-07" and f["previous_month"] == "2026-06"
+    assert f["total_spending"] == 350.0 and f["previous_spending"] == 100.0
+    assert f["spend_change_pct"] == 250.0  # (350-100)/100 * 100
+    assert "Shopping" in f["new_categories"]
+    top_mover = f["category_movers"][0]
+    assert top_mover["category"] == "Shopping" and top_mover["delta"] == 250.0
+    # savings rate = (3000 - 350) / 3000 * 100
+    assert f["savings_rate"] == round((3000 - 350) / 3000 * 100, 1)
+    narrative, recs = _deterministic_narrative(f)
+    assert "2026-07" in narrative and recs
+
+
+def test_digest_empty():
+    assert compute_facts_from_txns([]) == {"has_data": False}
