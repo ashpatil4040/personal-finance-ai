@@ -3,11 +3,14 @@
 An AI-assisted personal finance app. Upload bank/credit-card statements and get
 automatic categorization, spending breakdowns, and plain-language insights.
 
-This repository implements **Phase 1 (Foundation)** of the
-[project plan](#roadmap): a multi-user foundation with statement ingestion and a
-modern dashboard. The AI layer is currently transparent, rule-based heuristics
-(no external keys required); later phases swap in LLM-assisted categorization and
-a LangGraph multi-agent advisory system behind the same interfaces.
+This repository implements **Phases 1–2** of the [project plan](#roadmap): a
+multi-user foundation plus statement ingestion (CSV and PDF), with a modern
+dashboard. Insights are deterministic; **categorization** uses OpenAI when a key
+is provided and falls back to transparent keyword rules otherwise. PDF ingestion
+likewise has an **optional LLM-assisted fallback** (OpenAI) for messy formats.
+Everything runs with no external keys — the LLM features simply activate when
+`PFAI_LLM_ENABLED=true` and `OPENAI_API_KEY` are set. Later phases add a LangGraph multi-agent advisory
+system and RAG behind the same interfaces.
 
 ## Stack
 
@@ -15,7 +18,7 @@ a LangGraph multi-agent advisory system behind the same interfaces.
 | -------- | ----------------------------------------------------------- |
 | Backend  | Python 3.12 · FastAPI · SQLAlchemy · **PostgreSQL + pgvector** |
 | Auth     | JWT (OAuth2 bearer) with strict per-user data isolation     |
-| Ingestion| CSV parsing/normalization via pandas                        |
+| Ingestion| CSV (pandas) + PDF (pdfplumber), optional LLM fallback (OpenAI) |
 | Frontend | React 18 · TypeScript · Vite · **Tailwind + shadcn/ui** · Recharts |
 
 ## Project layout
@@ -26,31 +29,60 @@ frontend/   React + Vite + shadcn/ui dashboard
 .cursor/    Cloud Agent environment (install.sh, start.sh, environment.json)
 ```
 
-## Quick start
+## Run on your own computer
 
-Requires PostgreSQL running locally with a `finance` role/database (the Cloud
-Agent `install.sh` sets this up automatically).
+Cross-platform (macOS / Windows / Linux). Prerequisites: **Python 3.12+**,
+**Node 20+**, and **Docker Desktop** (the easiest way to get PostgreSQL +
+pgvector without installing Postgres yourself).
 
-### Backend
+```bash
+git clone <repo-url>
+cd personal-finance-ai
+git checkout cursor/scaffold-personal-finance-ai-env-7441
+```
+
+### 1. Start PostgreSQL (with pgvector)
+
+```bash
+docker compose up -d           # starts Postgres 16 + pgvector on :5432
+```
+
+Already have PostgreSQL installed and prefer not to use Docker? Instead create
+the role/db manually and skip this step:
+
+```sql
+CREATE ROLE finance LOGIN PASSWORD 'finance';
+CREATE DATABASE finance OWNER finance;
+\c finance
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+### 2. Backend
 
 ```bash
 cd backend
-python3 -m venv .venv && source .venv/bin/activate
+python3 -m venv .venv
+source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-# defaults to postgresql+psycopg2://finance:finance@127.0.0.1:5432/finance
-python -m app.seed            # create demo user + sample data (idempotent)
+cp .env.example .env               # optional; defaults already work
+python -m app.seed                 # create demo user + sample data (idempotent)
 uvicorn app.main:app --reload --port 8000
 ```
 
 Interactive API docs at `http://localhost:8000/docs`.
 
-### Frontend
+### 3. Frontend (in a second terminal)
 
 ```bash
 cd frontend
 npm install
-npm run dev                   # http://localhost:5173 (proxies /api to :8000)
+npm run dev                        # http://localhost:5173 (proxies /api to :8000)
 ```
+
+Open `http://localhost:5173` and sign in with the demo login below.
+
+> On Linux you can alternatively run `bash .cursor/install.sh`, which installs
+> Postgres + pgvector via `apt` and both stacks in one step (needs `sudo`).
 
 ### Demo login
 
@@ -65,7 +97,7 @@ statement to try the upload flow lives at `backend/sample_statement.csv`.
 | POST   | `/api/auth/login`          | Log in, returns JWT                      |
 | GET    | `/api/auth/me`             | Current user                             |
 | GET    | `/api/accounts`            | List accounts (scoped to user)          |
-| POST   | `/api/uploads`             | Upload a CSV statement (multipart)       |
+| POST   | `/api/uploads`             | Upload a CSV or PDF statement (multipart) |
 | GET    | `/api/transactions`        | List transactions (filters: category, account) |
 | POST   | `/api/transactions`        | Add a transaction (auto-categorized)     |
 | DELETE | `/api/transactions/{id}`   | Delete a transaction                     |
@@ -76,9 +108,21 @@ Amount convention: negative = spending, positive = income.
 
 ## Roadmap
 
-Phase 1 (this repo): foundation — Postgres data model, JWT auth, CSV ingestion,
-dashboard. Later phases add PDF parsing, LLM-assisted extraction, a LangGraph
-analytics/advisory multi-agent system, and Personal/Knowledge RAG over pgvector.
+- **Phase 1** ✅ — foundation: Postgres data model, JWT auth, CSV ingestion, dashboard.
+- **Phase 2** ✅ — ingestion intelligence: PDF statement parsing (pdfplumber) plus an optional LLM-assisted extraction fallback (OpenAI) for messy formats.
+- **Phase 3+** — LangGraph analytics/advisory multi-agent system and Personal/Knowledge RAG over pgvector.
+
+### Enabling the LLM fallback (optional)
+
+PDF parsing works without any keys. To turn on the OpenAI fallback for
+statements the heuristic parser can't read, set these environment variables and
+restart the backend:
+
+```bash
+PFAI_LLM_ENABLED=true
+OPENAI_API_KEY=sk-...          # standard OpenAI key
+# optional: PFAI_OPENAI_MODEL=gpt-4o-mini
+```
 
 ## Cloud Agent environment
 

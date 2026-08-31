@@ -47,6 +47,7 @@ export interface UploadResult {
   filename: string;
   imported: number;
   account_id: number | null;
+  method: string;
 }
 
 const TOKEN_KEY = "pfai_token";

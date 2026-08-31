@@ -1,0 +1,25 @@
+# Spins up PostgreSQL 16 with the pgvector extension for local development.
+# The app connects with the default credentials (finance/finance) so no extra
+# configuration is needed. Start it with: docker compose up -d
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: finance-postgres
+    environment:
+      POSTGRES_USER: finance
+      POSTGRES_PASSWORD: finance
+      POSTGRES_DB: finance
+    ports:
+      - "5432:5432"
+    volumes:
+      - finance-pgdata:/var/lib/postgresql/data
+      # Enables the pgvector extension on first initialization.
+      - ./docker/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U finance -d finance"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  finance-pgdata:

@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -17,6 +18,18 @@ class Settings(BaseSettings):
     # Seeded demo account so the dashboard has data on first login.
     demo_email: str = "demo@financeai.app"
     demo_password: str = "demo1234"
+
+    # --- Phase 2: LLM-assisted extraction (OpenAI) ---
+    # Off by default so the app runs with no API key. When enabled and an API key
+    # is present, the PDF upload path falls back to OpenAI for statements the
+    # heuristic parser cannot read.
+    llm_enabled: bool = False
+    openai_model: str = "gpt-4o-mini"
+    # Accepts either PFAI_OPENAI_API_KEY or the standard OPENAI_API_KEY env var.
+    openai_api_key: str = Field(
+        default="",
+        validation_alias=AliasChoices("PFAI_OPENAI_API_KEY", "OPENAI_API_KEY"),
+    )
 
 
 @lru_cache
