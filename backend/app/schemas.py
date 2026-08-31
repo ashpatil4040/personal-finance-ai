@@ -115,6 +115,8 @@ class AskResponse(BaseModel):
     answer: str
     tools_used: list[str] = []
     grounded: bool = True
+    # analytics | anomaly | research | general — which specialist handled it.
+    agent: str = "analytics"
 
 
 # ---- Monthly digest (Phase 4 advisory) ----
@@ -123,3 +125,21 @@ class DigestResponse(BaseModel):
     narrative: str
     recommendations: list[str] = []
     facts: dict = {}
+
+
+# ---- Anomalies (Phase 5) ----
+class AnomalyOut(BaseModel):
+    kind: str
+    severity: str
+    reason: str
+    date: str
+    description: str
+    amount: float
+    category: str
+    transaction_id: int | None = None
+
+
+class AnomaliesResponse(BaseModel):
+    count: int
+    summary: str
+    anomalies: list[AnomalyOut] = []

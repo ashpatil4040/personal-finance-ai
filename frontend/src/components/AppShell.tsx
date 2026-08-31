@@ -12,8 +12,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { api, type Digest, type Insights, type Transaction } from "@/lib/api";
+import { api, type Anomalies, type Digest, type Insights, type Transaction } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { AnomaliesCard } from "./AnomaliesCard";
 import { AskView } from "./AskView";
 import { CategoryChart, MonthlyChart } from "./Charts";
 import { InsightsPanel } from "./InsightsPanel";
@@ -37,18 +38,21 @@ export function AppShell() {
   const [insights, setInsights] = useState<Insights | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [digest, setDigest] = useState<Digest | null>(null);
+  const [anomalies, setAnomalies] = useState<Anomalies | null>(null);
   const [loading, setLoading] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
-      const [ins, txns, dig] = await Promise.all([
+      const [ins, txns, dig, anom] = await Promise.all([
         api.insights(),
         api.listTransactions(),
         api.digest().catch(() => null),
+        api.anomalies().catch(() => null),
       ]);
       setInsights(ins);
       setTransactions(txns);
       setDigest(dig);
+      setAnomalies(anom);
     } catch {
       toast.error("Could not load your data.");
     } finally {
@@ -143,7 +147,7 @@ export function AppShell() {
                 {view === "dashboard" && "Your financial overview at a glance."}
                 {view === "transactions" && "Every transaction, auto-categorized."}
                 {view === "upload" && "Import statements to grow your history."}
-                {view === "ask" && "Ask questions grounded in your real data."}
+                {view === "ask" && "Ask analytics, anomaly, or research specialists grounded in your data."}
               </p>
             </div>
             <Button variant="ghost" size="icon" onClick={logout} className="md:hidden" aria-label="Sign out">
@@ -156,7 +160,12 @@ export function AppShell() {
           ) : loading ? (
             <LoadingState />
           ) : view === "dashboard" ? (
-            <DashboardView insights={insights} transactions={transactions} digest={digest} />
+            <DashboardView
+              insights={insights}
+              transactions={transactions}
+              digest={digest}
+              anomalies={anomalies}
+            />
           ) : view === "transactions" ? (
             <Card>
               <CardHeader>
@@ -186,15 +195,18 @@ function DashboardView({
   insights,
   transactions,
   digest,
+  anomalies,
 }: {
   insights: Insights | null;
   transactions: Transaction[];
   digest: Digest | null;
+  anomalies: Anomalies | null;
 }) {
   if (!insights) return null;
   return (
     <div className="space-y-6">
       {digest?.has_data && <MonthlyDigest digest={digest} />}
+      {anomalies && <AnomaliesCard data={anomalies} />}
       <StatCards summary={insights.summary} />
       <div className="grid gap-6 lg:grid-cols-3">
         <Card className="lg:col-span-2">

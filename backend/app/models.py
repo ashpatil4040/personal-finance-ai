@@ -76,3 +76,16 @@ class Transaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     # Personal RAG embedding of the description (nullable; filled when LLM is on).
     embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
+
+
+class KnowledgeChunk(Base):
+    """Evergreen personal-finance notes for Knowledge RAG (Phase 5)."""
+
+    __tablename__ = "knowledge_chunks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    slug: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    topic: Mapped[str] = mapped_column(String(64), nullable=False, default="")
+    content: Mapped[str] = mapped_column(String(4000), nullable=False)
+    embedding: Mapped[list[float] | None] = mapped_column(Vector(EMBEDDING_DIM), nullable=True)
