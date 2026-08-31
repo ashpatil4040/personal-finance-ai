@@ -2,6 +2,7 @@ import {
   LayoutDashboard,
   ListChecks,
   LogOut,
+  MessageCircle,
   Sparkles,
   Upload,
 } from "lucide-react";
@@ -13,18 +14,20 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, type Insights, type Transaction } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { AskView } from "./AskView";
 import { CategoryChart, MonthlyChart } from "./Charts";
 import { InsightsPanel } from "./InsightsPanel";
 import { StatCards } from "./StatCards";
 import { TransactionsTable } from "./TransactionsTable";
 import { UploadCard } from "./UploadCard";
 
-type View = "dashboard" | "transactions" | "upload";
+type View = "dashboard" | "transactions" | "upload" | "ask";
 
 const NAV: { id: View; label: string; icon: React.ReactNode }[] = [
   { id: "dashboard", label: "Dashboard", icon: <LayoutDashboard className="size-4" /> },
   { id: "transactions", label: "Transactions", icon: <ListChecks className="size-4" /> },
   { id: "upload", label: "Upload", icon: <Upload className="size-4" /> },
+  { id: "ask", label: "Ask AI", icon: <MessageCircle className="size-4" /> },
 ];
 
 export function AppShell() {
@@ -133,6 +136,7 @@ export function AppShell() {
                 {view === "dashboard" && "Your financial overview at a glance."}
                 {view === "transactions" && "Every transaction, auto-categorized."}
                 {view === "upload" && "Import statements to grow your history."}
+                {view === "ask" && "Ask questions grounded in your real data."}
               </p>
             </div>
             <Button variant="ghost" size="icon" onClick={logout} className="md:hidden" aria-label="Sign out">
@@ -140,7 +144,9 @@ export function AppShell() {
             </Button>
           </header>
 
-          {loading ? (
+          {view === "ask" ? (
+            <AskView />
+          ) : loading ? (
             <LoadingState />
           ) : view === "dashboard" ? (
             <DashboardView insights={insights} transactions={transactions} />
