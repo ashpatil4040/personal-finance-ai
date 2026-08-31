@@ -5,8 +5,9 @@ from __future__ import annotations
 import os
 from datetime import date
 
+from app.categorize import CATEGORIES, categorize_batch, rule_categorize
 from app.ingest import parse_csv
-from app.llm import parse_llm_json
+from app.llm import parse_category_list, parse_llm_json
 from app.pdf_ingest import parse_pdf_heuristic
 
 SAMPLE_PDF = os.path.join(os.path.dirname(os.path.dirname(__file__)), "sample_statement.pdf")
@@ -61,3 +62,29 @@ def test_llm_parse_skips_bad_rows_and_bad_json():
     assert len(rows) == 1
     assert rows[0]["description"] == "Good"
     assert parse_llm_json("not json at all") == []
+
+
+def test_parse_category_list_valid_and_coercion():
+    out = parse_category_list('["Dining", "Income"]', 2, CATEGORIES)
+    assert out == ["Dining", "Income"]
+    # Unknown label is coerced to Uncategorized so the caller can fall back.
+    out = parse_category_list('["Dining", "Nonsense"]', 2, CATEGORIES)
+    assert out == ["Dining", "Uncategorized"]
+
+
+def test_parse_category_list_wrong_length_or_bad_json():
+    assert parse_category_list('["Dining"]', 2, CATEGORIES) is None
+    assert parse_category_list("not json", 1, CATEGORIES) is None
+
+
+def test_categorize_batch_falls_back_to_rules_without_llm():
+    # LLM is disabled by default in tests, so this uses keyword rules.
+    items = [
+        {"description": "Starbucks Coffee", "amount": -6.5},
+        {"description": "Monthly Salary Payroll", "amount": 4200.0},
+        {"description": "Zzzxyz Unknownmerchant", "amount": -10.0},
+    ]
+    cats = categorize_batch(items)
+    assert cats[0] == "Dining"
+    assert cats[1] == "Income"
+    assert cats[2] == rule_categorize("Zzzxyz Unknownmerchant", -10.0)

@@ -1,8 +1,9 @@
-"""Phase 1 rule-based categorization.
+"""Transaction categorization.
 
-The plan defers LLM-assisted categorization to a later phase; for the
-foundation we use transparent keyword rules. The single ``categorize``
-entry point keeps the interface stable for a future LLM swap.
+Rule-based keyword matching is the deterministic baseline (Phase 1). When the
+LLM is enabled (Phase 2+), ``categorize``/``categorize_batch`` use OpenAI for
+better accuracy and fall back to the rules on any failure or low-confidence
+result. The category taxonomy is fixed so downstream charts stay stable.
 """
 
 from __future__ import annotations
@@ -22,8 +23,12 @@ CATEGORY_KEYWORDS: dict[str, list[str]] = {
     "Income": ["salary", "payroll", "paycheck", "direct deposit", "deposit", "refund", "interest", "dividend"],
 }
 
+# Fixed taxonomy the LLM must choose from (keys + Uncategorized).
+CATEGORIES: list[str] = list(CATEGORY_KEYWORDS.keys()) + ["Uncategorized"]
 
-def categorize(description: str, amount: float | None = None) -> str:
+
+def rule_categorize(description: str, amount: float | None = None) -> str:
+    """Deterministic keyword-based categorization (always available)."""
     text = (description or "").lower()
     for category, keywords in CATEGORY_KEYWORDS.items():
         if any(keyword in text for keyword in keywords):
@@ -31,6 +36,35 @@ def categorize(description: str, amount: float | None = None) -> str:
     if amount is not None and amount > 0:
         return "Income"
     return "Uncategorized"
+
+
+def categorize(description: str, amount: float | None = None) -> str:
+    """Categorize one transaction, using the LLM when available."""
+    return categorize_batch([{"description": description, "amount": amount}])[0]
+
+
+def categorize_batch(items: list[dict]) -> list[str]:
+    """Categorize many transactions in one shot.
+
+    Uses a single LLM call when enabled; any item the LLM can't confidently
+    place (invalid label or failure) falls back to the deterministic rules.
+    """
+    rule = [rule_categorize(i.get("description", ""), i.get("amount")) for i in items]
+    if not items:
+        return rule
+
+    from . import llm  # lazy to avoid import cost when LLM is off
+
+    if not llm.llm_available():
+        return rule
+
+    predicted = llm.llm_categorize(items, CATEGORIES)
+    if not predicted or len(predicted) != len(items):
+        return rule
+    return [
+        p if p in CATEGORIES and p != "Uncategorized" else rule[idx]
+        for idx, p in enumerate(predicted)
+    ]
 
 
 def _month_key(d) -> str:

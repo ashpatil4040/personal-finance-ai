@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from .. import llm, schemas
 from ..auth import get_current_user
-from ..categorize import categorize
+from ..categorize import categorize_batch
 from ..database import get_db
 from ..ingest import CSVParseError, parse_csv
 from ..models import Account, Statement, Transaction, User
@@ -75,7 +75,9 @@ async def upload_statement(
     db.add(statement)
     db.flush()
 
-    for row in rows:
+    # One categorization pass for the whole statement (single LLM call when on).
+    categories = categorize_batch(rows)
+    for row, category in zip(rows, categories):
         db.add(
             Transaction(
                 user_id=current.id,
@@ -84,7 +86,7 @@ async def upload_statement(
                 date=row["date"],
                 description=row["description"],
                 amount=row["amount"],
-                category=categorize(row["description"], row["amount"]),
+                category=category,
             )
         )
     db.commit()

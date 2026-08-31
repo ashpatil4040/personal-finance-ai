@@ -5,10 +5,11 @@ automatic categorization, spending breakdowns, and plain-language insights.
 
 This repository implements **Phases 1–2** of the [project plan](#roadmap): a
 multi-user foundation plus statement ingestion (CSV and PDF), with a modern
-dashboard. Categorization/insights are transparent rule-based heuristics (no
-external keys required). PDF ingestion additionally has an **optional
-LLM-assisted fallback** (OpenAI) that activates only when an API key is
-provided. Later phases add a LangGraph multi-agent advisory
+dashboard. Insights are deterministic; **categorization** uses OpenAI when a key
+is provided and falls back to transparent keyword rules otherwise. PDF ingestion
+likewise has an **optional LLM-assisted fallback** (OpenAI) for messy formats.
+Everything runs with no external keys — the LLM features simply activate when
+`PFAI_LLM_ENABLED=true` and `OPENAI_API_KEY` are set. Later phases add a LangGraph multi-agent advisory
 system and RAG behind the same interfaces.
 
 ## Stack
