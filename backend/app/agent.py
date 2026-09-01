@@ -1,35 +1,139 @@
-"""Phase 3: LangGraph analytics agent.
+"""Phase 5: LangGraph multi-agent orchestration.
 
-A ReAct agent (OpenAI via langchain-openai) answers natural-language questions
-grounded in the user's real transaction data. Tools are built per request and
-closed over the caller's DB session + user id, so every query is strictly scoped
-to that user. The agent is instructed to answer only from tool output, never
-inventing numbers.
+A router sends each question to a specialist ReAct agent:
+
+- **analytics** — spending, transactions, savings scenarios, Personal RAG
+- **anomaly** — unusual / duplicate / outlier charges
+- **research** — Knowledge RAG + web search (evergreen advice and current info)
+- **general** — all tools, for advice that needs both the user's data and research
+
+Tools are built per request and closed over the caller's DB session + user id,
+so every query is strictly scoped. Specialists are instructed to answer only
+from tool output, never inventing numbers.
 """
 
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime
+from datetime import datetime
+from typing import Literal, TypedDict
 
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
+from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import create_react_agent
 from sqlalchemy.orm import Session
 
-from . import rag
+from . import anomalies, knowledge, rag, websearch
 from .categorize import generate_insights
 from .config import get_settings
 from .models import Transaction
 
-SYSTEM_PROMPT = (
-    "You are a helpful personal-finance assistant. Answer the user's question "
+Route = Literal["analytics", "anomaly", "research", "general"]
+
+ANALYTICS_PROMPT = (
+    "You are the analytics specialist for a personal-finance assistant. Answer "
     "using ONLY the provided tools, which return this specific user's real "
     "transaction data. Always ground answers in concrete numbers from the tools "
     "and never invent figures. Format currency like $1,234.56. If the question "
     "is not about the user's finances, say you can only help with their money "
     "data. Keep answers concise (2-4 sentences)."
 )
+
+ANOMALY_PROMPT = (
+    "You are the anomaly/fraud specialist. Use detect_anomalies first. Ground "
+    "every claim in tool output — never invent a suspicious charge. Explain "
+    "why each item was flagged (duplicate, outlier, new merchant) and stay "
+    "calm: these are heuristics, not proof of fraud. If nothing was flagged, "
+    "say so clearly. Keep answers concise."
+)
+
+RESEARCH_PROMPT = (
+    "You are the research specialist. Use search_finance_knowledge for evergreen "
+    "personal-finance guidance (budgeting rules, emergency funds, debt payoff). "
+    "Use search_web for current/external facts (interest rates, inflation, news). "
+    "Cite sources by title. This is educational, not personalized financial "
+    "advice. Never invent rates or statistics. Keep answers concise (3-6 sentences)."
+)
+
+GENERAL_PROMPT = (
+    "You are a personal-finance advisor. Combine the user's real transactions "
+    "(analytics/anomaly tools) with knowledge-base and web research when the "
+    "question needs both. Ground every number in tool output. Never invent "
+    "figures. Educational only — not personalized financial advice. "
+    "Format currency like $1,234.56. Keep answers concise."
+)
+
+ANOMALY_KEYWORDS = (
+    "unusual",
+    "anomal",
+    "fraud",
+    "suspicious",
+    "duplicate",
+    "charged twice",
+    "double charge",
+    "double-charged",
+    "weird charge",
+    "strange charge",
+    "odd transaction",
+    "unauthorized",
+    "outlier",
+    "scam",
+    "stolen",
+    "did i get charged",
+    "anything weird",
+    "anything unusual",
+    "red flag",
+)
+
+RESEARCH_KEYWORDS = (
+    "inflation",
+    "interest rate",
+    "federal funds",
+    "fed funds",
+    "50/30/20",
+    "50-30-20",
+    "50 30 20",
+    "emergency fund",
+    "high-yield",
+    "hysa",
+    "apy",
+    "apr",
+    "debt avalanche",
+    "debt snowball",
+    "credit utilization",
+    "sinking fund",
+    "rule of thumb",
+    "budget rule",
+    "search the web",
+    "look up",
+    "on the web",
+    "current rate",
+    "healthy savings",
+)
+
+GENERAL_KEYWORDS = (
+    "advice",
+    "recommend",
+    "what should i do",
+    "how can i improve",
+    "tips for",
+    "help me budget",
+    "help me plan",
+    "how should i",
+)
+
+
+def classify_question(question: str) -> Route:
+    """Keyword router. Deterministic so tests (and no-LLM paths) stay stable."""
+    q = (question or "").lower()
+    if any(k in q for k in ANOMALY_KEYWORDS):
+        return "anomaly"
+    if any(k in q for k in RESEARCH_KEYWORDS):
+        return "research"
+    if any(k in q for k in GENERAL_KEYWORDS):
+        return "general"
+    return "analytics"
 
 
 def _parse_date(value: str | None):
@@ -141,30 +245,62 @@ def make_tools(db: Session, user_id: int):
             for t in rows
         ]
 
-    return [
+    @tool
+    def detect_anomalies() -> dict:
+        """Scan the user's transactions for unusual activity: possible duplicate
+        charges, amount outliers vs the category median, and first-time large
+        merchants. Use for fraud/suspicious/weird-charge questions."""
+        return anomalies.detect_anomalies(db, user_id)
+
+    @tool
+    def search_finance_knowledge(query: str, k: int = 3) -> list[dict]:
+        """Search the built-in personal-finance knowledge base (budgeting rules,
+        emergency funds, debt payoff, credit utilization, subscriptions). Use
+        for evergreen how-to / rule-of-thumb questions."""
+        return knowledge.search_knowledge(db, query, k=k)
+
+    @tool
+    def search_web(query: str, k: int = 5) -> list[dict]:
+        """Search the public web (DuckDuckGo + Wikipedia) for current or external
+        facts such as interest rates, inflation, or news. Returns titles, snippets,
+        and source URLs. Use when the knowledge base is not enough."""
+        return websearch.search_web(query, k=k)
+
+    analytics = [
         get_spending_summary,
         query_transactions,
         calculate_savings_scenario,
         search_similar_transactions,
     ]
+    anomaly = [detect_anomalies, query_transactions]
+    research = [search_finance_knowledge, search_web]
+    general = analytics + [detect_anomalies, search_finance_knowledge, search_web]
+    return {
+        "analytics": analytics,
+        "anomaly": anomaly,
+        "research": research,
+        "general": general,
+    }
 
 
-def build_agent(db: Session, user_id: int):
-    settings = get_settings()
-    model = ChatOpenAI(
-        model=settings.openai_model,
-        temperature=0,
-        api_key=settings.openai_api_key,
-    )
-    return create_react_agent(model, make_tools(db, user_id), prompt=SYSTEM_PROMPT)
+PROMPTS: dict[Route, str] = {
+    "analytics": ANALYTICS_PROMPT,
+    "anomaly": ANOMALY_PROMPT,
+    "research": RESEARCH_PROMPT,
+    "general": GENERAL_PROMPT,
+}
 
 
-def answer_question(db: Session, user_id: int, question: str) -> dict:
-    """Run the agent for one question. Returns {answer, tools_used}."""
-    agent = build_agent(db, user_id)
-    result = agent.invoke({"messages": [{"role": "user", "content": question}]})
+class AgentState(TypedDict, total=False):
+    question: str
+    route: Route
+    answer: str
+    tools_used: list[str]
+    agent: str
+
+
+def _extract_result(result: dict) -> tuple[str, list[str]]:
     messages = result.get("messages", [])
-
     tools_used: list[str] = []
     for m in messages:
         for call in getattr(m, "tool_calls", None) or []:
@@ -178,4 +314,61 @@ def answer_question(db: Session, user_id: int, question: str) -> dict:
         if getattr(m, "type", None) == "ai" and content:
             answer = content if isinstance(content, str) else str(content)
             break
-    return {"answer": answer or "I couldn't find an answer.", "tools_used": tools_used}
+    return answer or "I couldn't find an answer.", tools_used
+
+
+def build_agent(db: Session, user_id: int):
+    """Compile the multi-agent graph (router + four specialist ReAct agents)."""
+    settings = get_settings()
+    model = ChatOpenAI(
+        model=settings.openai_model,
+        temperature=0,
+        api_key=settings.openai_api_key,
+    )
+    tools = make_tools(db, user_id)
+
+    def router_node(state: AgentState) -> dict:
+        return {"route": classify_question(state.get("question", ""))}
+
+    def make_specialist(route: Route):
+        def node(state: AgentState) -> dict:
+            specialist = create_react_agent(model, tools[route], prompt=PROMPTS[route], name=route)
+            result = specialist.invoke({"messages": [{"role": "user", "content": state["question"]}]})
+            answer, tools_used = _extract_result(result)
+            return {"answer": answer, "tools_used": tools_used, "agent": route}
+
+        node.__name__ = f"{route}_node"
+        return node
+
+    graph = StateGraph(AgentState)
+    graph.add_node("router", router_node)
+    for route in ("analytics", "anomaly", "research", "general"):
+        graph.add_node(route, make_specialist(route))  # type: ignore[arg-type]
+    graph.add_edge(START, "router")
+    graph.add_conditional_edges(
+        "router",
+        lambda s: s["route"],
+        {
+            "analytics": "analytics",
+            "anomaly": "anomaly",
+            "research": "research",
+            "general": "general",
+        },
+    )
+    for route in ("analytics", "anomaly", "research", "general"):
+        graph.add_edge(route, END)
+    return graph.compile()
+
+
+def answer_question(db: Session, user_id: int, question: str) -> dict:
+    """Run the multi-agent graph for one question.
+
+    Returns {answer, tools_used, agent}.
+    """
+    graph = build_agent(db, user_id)
+    result = graph.invoke({"question": question})
+    return {
+        "answer": result.get("answer") or "I couldn't find an answer.",
+        "tools_used": result.get("tools_used") or [],
+        "agent": result.get("agent") or classify_question(question),
+    }

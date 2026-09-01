@@ -26,6 +26,7 @@ def ask(
             ),
             tools_used=[],
             grounded=False,
+            agent="analytics",
         )
 
     try:
@@ -35,5 +36,11 @@ def ask(
             answer="Sorry, I hit an error answering that. Please try rephrasing.",
             tools_used=[],
             grounded=False,
+            agent="analytics",
         )
-    return schemas.AskResponse(answer=result["answer"], tools_used=result["tools_used"], grounded=True)
+    return schemas.AskResponse(
+        answer=result["answer"],
+        tools_used=result["tools_used"],
+        grounded=True,
+        agent=result.get("agent", "analytics"),
+    )

@@ -27,6 +27,12 @@ def ensure_pgvector() -> None:
         conn.execute(
             text("ALTER TABLE IF EXISTS transactions ADD COLUMN IF NOT EXISTS embedding vector(1536)")
         )
+        conn.execute(
+            text(
+                "ALTER TABLE IF EXISTS knowledge_chunks "
+                "ADD COLUMN IF NOT EXISTS embedding vector(1536)"
+            )
+        )
 
 
 def get_db():

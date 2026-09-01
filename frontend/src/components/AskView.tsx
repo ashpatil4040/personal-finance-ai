@@ -9,14 +9,22 @@ interface Msg {
   role: "user" | "ai";
   text: string;
   tools?: string[];
+  agent?: string;
 }
 
 const EXAMPLES = [
   "How much did I spend on dining?",
-  "What's my biggest spending category?",
+  "Any unusual or suspicious charges?",
+  "What's a healthy emergency fund?",
   "How much could I save by cutting dining 30%?",
-  "Show my largest transactions this period.",
 ];
+
+const AGENT_LABEL: Record<string, string> = {
+  analytics: "Analytics",
+  anomaly: "Anomaly",
+  research: "Research",
+  general: "Advisor",
+};
 
 export function AskView() {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -32,7 +40,10 @@ export function AskView() {
     setBusy(true);
     try {
       const res = await api.ask(q);
-      setMessages((m) => [...m, { role: "ai", text: res.answer, tools: res.tools_used }]);
+      setMessages((m) => [
+        ...m,
+        { role: "ai", text: res.answer, tools: res.tools_used, agent: res.agent },
+      ]);
     } catch (err) {
       setMessages((m) => [
         ...m,
@@ -56,7 +67,7 @@ export function AskView() {
               <div>
                 <p className="font-medium">Ask about your money</p>
                 <p className="text-sm text-muted-foreground">
-                  Answers are grounded in your real transactions.
+                  A router sends you to analytics, anomaly, or research specialists.
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-2">
@@ -87,9 +98,10 @@ export function AskView() {
                   }`}
                 >
                   <p className="whitespace-pre-wrap">{m.text}</p>
-                  {m.tools && m.tools.length > 0 && (
+                  {(m.agent || (m.tools && m.tools.length > 0)) && (
                     <p className="mt-2 text-[11px] opacity-70">
-                      Grounded via: {m.tools.join(", ")}
+                      {m.agent ? `${AGENT_LABEL[m.agent] ?? m.agent} agent` : "Grounded"}
+                      {m.tools && m.tools.length > 0 ? ` · ${m.tools.join(", ")}` : ""}
                     </p>
                   )}
                 </div>
@@ -127,7 +139,7 @@ export function AskView() {
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask about your spending, savings, transactions…"
+            placeholder="Ask about spending, unusual charges, or money advice…"
             disabled={busy}
           />
           <Button type="submit" disabled={busy || !input.trim()}>

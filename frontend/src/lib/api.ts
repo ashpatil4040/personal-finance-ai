@@ -54,6 +54,7 @@ export interface AskResponse {
   answer: string;
   tools_used: string[];
   grounded: boolean;
+  agent: string;
 }
 
 export interface Digest {
@@ -70,6 +71,23 @@ export interface Digest {
     category_movers?: { category: string; delta: number }[];
     largest_transactions?: { description: string; amount: number; category: string }[];
   };
+}
+
+export interface Anomaly {
+  kind: string;
+  severity: string;
+  reason: string;
+  date: string;
+  description: string;
+  amount: number;
+  category: string;
+  transaction_id: number | null;
+}
+
+export interface Anomalies {
+  count: number;
+  summary: string;
+  anomalies: Anomaly[];
 }
 
 const TOKEN_KEY = "pfai_token";
@@ -147,6 +165,8 @@ export const api = {
     }),
 
   digest: () => request<Digest>("/api/digest"),
+
+  anomalies: () => request<Anomalies>("/api/anomalies"),
 
   upload: (file: File, accountId?: number | null) => {
     const form = new FormData();

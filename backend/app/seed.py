@@ -9,9 +9,10 @@ from __future__ import annotations
 from datetime import date
 
 from .auth import hash_password
-from .categorize import categorize
+from .categorize import rule_categorize
 from .config import get_settings
 from .database import Base, SessionLocal, ensure_pgvector, engine
+from .knowledge import ensure_corpus
 from .models import Account, Statement, Transaction, User
 
 SAMPLE = [
@@ -38,6 +39,19 @@ SAMPLE = [
     (date(2026, 7, 21), "Lyft Ride", -18.75),
     (date(2026, 7, 24), "Best Buy Electronics", -210.00),
     (date(2026, 7, 28), "Grubhub Lunch", -21.30),
+    # August — includes a duplicate Netflix, a shopping outlier, and a new large merchant
+    # so the Phase 5 anomaly detector has something to show on the demo account.
+    (date(2026, 8, 1), "Monthly Salary Payroll", 4200.00),
+    (date(2026, 8, 2), "Rent - Landlord", -1500.00),
+    (date(2026, 8, 4), "Whole Foods Market", -128.60),
+    (date(2026, 8, 6), "Starbucks Coffee", -7.25),
+    (date(2026, 8, 8), "Netflix Subscription", -15.49),
+    (date(2026, 8, 9), "Netflix Subscription", -15.49),
+    (date(2026, 8, 12), "Amazon.com Electronics", -899.00),
+    (date(2026, 8, 15), "WESTERN UNION WIRE", -450.00),
+    (date(2026, 8, 18), "Shell Gas Station", -51.10),
+    (date(2026, 8, 22), "Comcast Internet", -79.99),
+    (date(2026, 8, 25), "Trader Joe's", -91.40),
 ]
 
 
@@ -57,6 +71,7 @@ def seed(force: bool = False) -> tuple[str, bool]:
     try:
         user = db.query(User).filter(User.email == settings.demo_email).first()
         if user and not force:
+            ensure_corpus(db)
             return settings.demo_email, False
 
         if user and force:
@@ -88,10 +103,11 @@ def seed(force: bool = False) -> tuple[str, bool]:
                     date=d,
                     description=desc,
                     amount=amount,
-                    category=categorize(desc, amount),
+                    category=rule_categorize(desc, amount),
                 )
             )
         db.commit()
+        ensure_corpus(db)
         return settings.demo_email, True
     finally:
         db.close()
