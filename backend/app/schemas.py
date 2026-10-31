@@ -68,6 +68,10 @@ class TransactionOut(BaseModel):
     category: str
     account_id: int | None
     statement_id: int | None
+    source_filename: str | None = None
+    account_name: str | None = None
+    account_type: str | None = None
+    account_institution: str | None = None
 
 
 # ---- Uploads ----
@@ -76,7 +80,7 @@ class UploadResult(BaseModel):
     filename: str
     imported: int
     account_id: int | None
-    # How the rows were extracted: "csv", "pdf-heuristic", or "pdf-llm".
+    # Values: "csv", "csv-llm", "pdf-heuristic", or "pdf-llm".
     method: str
 
 

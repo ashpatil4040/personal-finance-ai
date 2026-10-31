@@ -5,7 +5,15 @@ from .config import get_settings
 
 settings = get_settings()
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+def _normalize_url(url: str) -> str:
+    # Hosted providers (Neon, Render) hand out postgres:// or postgresql:// URLs.
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg2://" + url[len(prefix):]
+    return url
+
+
+engine = create_engine(_normalize_url(settings.database_url), pool_pre_ping=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
@@ -20,7 +28,7 @@ def ensure_pgvector() -> None:
     the column to an already-existing transactions table (create_all never
     alters existing tables). Safe to call on every startup.
     """
-    if not settings.database_url.startswith("postgresql"):
+    if engine.url.get_backend_name() != "postgresql":
         return
     with engine.begin() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))

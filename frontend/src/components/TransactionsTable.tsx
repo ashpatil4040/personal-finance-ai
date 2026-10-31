@@ -20,8 +20,10 @@ const CATEGORY_TONE: Record<string, string> = {
   Housing: "bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300",
   Utilities: "bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300",
   Entertainment: "bg-fuchsia-100 text-fuchsia-700 dark:bg-fuchsia-950 dark:text-fuchsia-300",
+  Subscriptions: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
   Shopping: "bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300",
   Health: "bg-teal-100 text-teal-700 dark:bg-teal-950 dark:text-teal-300",
+  Transfer: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
 };
 
 export function TransactionsTable({
@@ -46,6 +48,7 @@ export function TransactionsTable({
         <TableRow>
           {!compact && <TableHead className="w-28">Date</TableHead>}
           <TableHead>Description</TableHead>
+          {!compact && <TableHead className="w-44">Source</TableHead>}
           {!compact && <TableHead className="w-32">Category</TableHead>}
           <TableHead className="w-28 text-right">Amount</TableHead>
           {onDelete && <TableHead className="w-10" />}
@@ -63,6 +66,28 @@ export function TransactionsTable({
                 <span className="ml-2 text-xs font-normal text-muted-foreground">{t.category}</span>
               )}
             </TableCell>
+            {!compact && (
+              <TableCell className="max-w-0">
+                <div
+                  className="truncate text-sm"
+                  title={t.source_filename ?? t.account_name ?? "Manual entry"}
+                >
+                  {t.account_name
+                    ? `${t.account_institution ? `${t.account_institution} · ` : ""}${t.account_name}`
+                    : t.source_filename ?? "Manual entry"}
+                </div>
+                {(t.account_type || t.source_filename) && (
+                  <div className="truncate text-xs text-muted-foreground">
+                    {t.account_type
+                      ? t.account_type === "credit"
+                        ? "Credit card"
+                        : t.account_type[0].toUpperCase() + t.account_type.slice(1)
+                      : "Uploaded statement"}
+                    {t.account_name && t.source_filename ? ` · ${t.source_filename}` : ""}
+                  </div>
+                )}
+              </TableCell>
+            )}
             {!compact && (
               <TableCell>
                 <Badge variant="secondary" className={CATEGORY_TONE[t.category] ?? ""}>

@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .config import get_settings
 from .database import Base, engine, ensure_pgvector, SessionLocal
 from .knowledge import ensure_corpus
 from .routers import accounts, anomalies, ask, auth, digest, insights, transactions, uploads
@@ -16,10 +17,12 @@ with SessionLocal() as _db:
 
 app = FastAPI(title="AI-Assisted Personal Finance API", version="1.0.0")
 
+_origins = [o.strip().rstrip("/") for o in get_settings().cors_origins.split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_origins or ["*"],
+    allow_credentials=_origins != ["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

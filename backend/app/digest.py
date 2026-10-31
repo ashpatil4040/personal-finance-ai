@@ -35,6 +35,8 @@ def compute_facts_from_txns(txns) -> dict:
     by_month_cat: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))
     by_month_txns: dict[str, list[Transaction]] = defaultdict(list)
     for t in txns:
+        if t.category == "Transfer":
+            continue
         mk = _month_key(t.date)
         by_month_txns[mk].append(t)
         if t.amount < 0:
