@@ -15,13 +15,15 @@ from tool output, never inventing numbers.
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+import re
+from datetime import date, datetime
 from typing import Literal, TypedDict
 
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import create_react_agent
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from . import anomalies, knowledge, rag, websearch
@@ -127,11 +129,19 @@ GENERAL_KEYWORDS = (
 def classify_question(question: str) -> Route:
     """Keyword router. Deterministic so tests (and no-LLM paths) stay stable."""
     q = (question or "").lower()
-    if any(k in q for k in ANOMALY_KEYWORDS):
+
+    def hit(keywords: tuple[str, ...]) -> bool:
+        # Word-start match; short keywords ("apr") must also end a word so they don't fire on "April".
+        return any(
+            re.search(r"(?<![a-z0-9])" + re.escape(k) + (r"(?![a-z0-9])" if len(k) <= 4 else ""), q)
+            for k in keywords
+        )
+
+    if hit(ANOMALY_KEYWORDS):
         return "anomaly"
-    if any(k in q for k in RESEARCH_KEYWORDS):
+    if hit(RESEARCH_KEYWORDS):
         return "research"
-    if any(k in q for k in GENERAL_KEYWORDS):
+    if hit(GENERAL_KEYWORDS):
         return "general"
     return "analytics"
 
@@ -158,22 +168,10 @@ def make_tools(db: Session, user_id: int):
         Use this for big-picture questions."""
         return generate_insights(_user_txns().all())
 
-    @tool
-    def query_transactions(
-        category: str | None = None,
-        start_date: str | None = None,
-        end_date: str | None = None,
-        min_amount: float | None = None,
-        max_amount: float | None = None,
-        limit: int = 50,
-    ) -> list[dict]:
-        """Look up the user's individual transactions. Optionally filter by
-        category, an inclusive date range (YYYY-MM-DD), and/or an amount range
-        (amounts are negative for spending, positive for income). Returns up to
-        `limit` matching transactions, most recent first."""
+    def _filtered(category, start_date, end_date, min_amount, max_amount, description_contains):
         q = _user_txns()
         if category:
-            q = q.filter(Transaction.category == category)
+            q = q.filter(func.lower(Transaction.category) == category.strip().lower())
         sd, ed = _parse_date(start_date), _parse_date(end_date)
         if sd:
             q = q.filter(Transaction.date >= sd)
@@ -183,16 +181,91 @@ def make_tools(db: Session, user_id: int):
             q = q.filter(Transaction.amount >= min_amount)
         if max_amount is not None:
             q = q.filter(Transaction.amount <= max_amount)
+        if description_contains:
+            q = q.filter(Transaction.description.ilike(f"%{description_contains.strip()}%"))
+        return q
+
+    @tool
+    def query_transactions(
+        category: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        min_amount: float | None = None,
+        max_amount: float | None = None,
+        description_contains: str | None = None,
+        limit: int = 50,
+    ) -> dict:
+        """Look up the user's individual transactions. Optionally filter by
+        category (case-insensitive), an inclusive date range (YYYY-MM-DD), an
+        amount range (negative = spending, positive = income), and/or a merchant
+        text match via `description_contains`. Returns `total_matches`, the exact
+        `total_amount` over ALL matches, and up to `limit` transactions (most
+        recent first). Never sum the listed rows yourself; use `total_amount`."""
+        q = _filtered(category, start_date, end_date, min_amount, max_amount, description_contains)
+        total_matches, total_amount = q.with_entities(
+            func.count(Transaction.id), func.coalesce(func.sum(Transaction.amount), 0.0)
+        ).one()
         rows = q.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(min(limit, 200)).all()
-        return [
-            {
-                "date": t.date.isoformat(),
-                "description": t.description,
-                "amount": t.amount,
-                "category": t.category,
+        return {
+            "total_matches": int(total_matches),
+            "total_amount": round(float(total_amount), 2),
+            "returned": len(rows),
+            "transactions": [
+                {
+                    "date": t.date.isoformat(),
+                    "description": t.description,
+                    "amount": t.amount,
+                    "category": t.category,
+                }
+                for t in rows
+            ],
+        }
+
+    @tool
+    def aggregate_transactions(
+        category: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        description_contains: str | None = None,
+        group_by: Literal["none", "category", "month", "merchant"] = "none",
+        include_transfers: bool = False,
+    ) -> dict:
+        """Compute EXACT totals over the user's transactions for questions like
+        "how much did I spend on X in March", "how many times", "average",
+        or "top merchants". Filters: category (case-insensitive), date range
+        (YYYY-MM-DD), merchant text. `group_by` splits results by category,
+        month (YYYY-MM) or merchant. Transfers (Zelle/ATM/card payments) are
+        excluded from spending unless include_transfers=true."""
+        q = _filtered(category, start_date, end_date, None, None, description_contains)
+        txns = q.all()
+        if not include_transfers:
+            txns = [t for t in txns if t.category != "Transfer"]
+
+        def summarize(items):
+            spent = sum(-t.amount for t in items if t.amount < 0)
+            income = sum(t.amount for t in items if t.amount > 0)
+            return {
+                "count": len(items),
+                "total_spent": round(spent, 2),
+                "total_income": round(income, 2),
+                "net": round(income - spent, 2),
             }
-            for t in rows
-        ]
+
+        out = {"overall": summarize(txns)}
+        if group_by != "none":
+            groups: dict[str, list] = defaultdict(list)
+            for t in txns:
+                if group_by == "category":
+                    key = t.category or "Uncategorized"
+                elif group_by == "month":
+                    key = f"{t.date.year:04d}-{t.date.month:02d}"
+                else:
+                    key = t.description.strip().lower()[:40]
+                groups[key].append(t)
+            rows = [{"group": k, **summarize(v)} for k, v in groups.items()]
+            rows.sort(key=lambda r: (-r["total_spent"], r["group"]))
+            out["groups"] = rows[:25]
+        return out
 
     @tool
     def calculate_savings_scenario(
@@ -206,7 +279,12 @@ def make_tools(db: Session, user_id: int):
         category). Returns the estimated monthly and annual savings with the
         numbers used."""
         txns = _user_txns().all()
-        spend = [t for t in txns if t.amount < 0 and (category is None or t.category == category)]
+        spend = [
+            t for t in txns
+            if t.amount < 0
+            and t.category != "Transfer"
+            and (category is None or t.category == category)
+        ]
         months: dict[str, float] = defaultdict(float)
         for t in spend:
             months[f"{t.date.year:04d}-{t.date.month:02d}"] += -t.amount
@@ -268,6 +346,7 @@ def make_tools(db: Session, user_id: int):
 
     analytics = [
         get_spending_summary,
+        aggregate_transactions,
         query_transactions,
         calculate_savings_scenario,
         search_similar_transactions,
@@ -317,6 +396,26 @@ def _extract_result(result: dict) -> tuple[str, list[str]]:
     return answer or "I couldn't find an answer.", tools_used
 
 
+def _data_context(db: Session, user_id: int) -> str:
+    lo, hi, n = db.query(
+        func.min(Transaction.date), func.max(Transaction.date), func.count(Transaction.id)
+    ).filter(Transaction.user_id == user_id).one()
+    cats = sorted(
+        c for (c,) in db.query(Transaction.category)
+        .filter(Transaction.user_id == user_id).distinct().all() if c
+    )
+    span = f"{lo.isoformat()} to {hi.isoformat()}" if lo and hi else "none"
+    return (
+        f"\n\nContext: today is {date.today().isoformat()}. The user has {n} transactions "
+        f"spanning {span}. Categories present: {', '.join(cats) or 'none'}. "
+        "Resolve relative dates ('this month', 'last month') against the data range "
+        "and state the exact dates used. For any total, count or average, call "
+        "aggregate_transactions or use the tool's total fields; never add numbers "
+        "yourself. If the tools return no matching data, say so plainly instead of "
+        "guessing."
+    )
+
+
 def build_agent(db: Session, user_id: int):
     """Compile the multi-agent graph (router + four specialist ReAct agents)."""
     settings = get_settings()
@@ -326,13 +425,16 @@ def build_agent(db: Session, user_id: int):
         api_key=settings.openai_api_key,
     )
     tools = make_tools(db, user_id)
+    context = _data_context(db, user_id)
 
     def router_node(state: AgentState) -> dict:
         return {"route": classify_question(state.get("question", ""))}
 
     def make_specialist(route: Route):
         def node(state: AgentState) -> dict:
-            specialist = create_react_agent(model, tools[route], prompt=PROMPTS[route], name=route)
+            specialist = create_react_agent(
+                model, tools[route], prompt=PROMPTS[route] + context, name=route
+            )
             result = specialist.invoke({"messages": [{"role": "user", "content": state["question"]}]})
             answer, tools_used = _extract_result(result)
             return {"answer": answer, "tools_used": tools_used, "agent": route}

@@ -1,0 +1,15 @@
+name: Keep API warm
+
+# Render's free web service sleeps after ~15 min idle; this pings it so the
+# first user request isn't a long cold start. Set repo variable BACKEND_URL.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    if: vars.BACKEND_URL != ''
+    runs-on: ubuntu-latest
+    steps:
+      - run: curl -fsS --max-time 90 "${{ vars.BACKEND_URL }}/api/health"

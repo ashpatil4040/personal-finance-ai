@@ -12,6 +12,9 @@ class Settings(BaseSettings):
 
     # Dev-only default signing key. MUST be overridden via PFAI_SECRET_KEY in prod.
     secret_key: str = "dev-insecure-change-me"
+    # Comma-separated allowed browser origins. "*" is fine locally; set the
+    # frontend URL in production (e.g. https://finance-ui.onrender.com).
+    cors_origins: str = "*"
     algorithm: str = "HS256"
     access_token_expire_minutes: int = 60 * 24  # 24h
 

@@ -13,10 +13,13 @@ unit-tested without calling the API.
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime
 
 from .config import get_settings
+
+logger = logging.getLogger(__name__)
 
 _PROMPT = """You are a financial statement parser. Extract every transaction from the \
 statement text below. Return ONLY a JSON array (no prose, no code fences) where each \
@@ -111,7 +114,11 @@ transaction to exactly one category from this fixed list:
 
 Rules:
 - Positive amounts are usually "Income".
-- Choose the single best category; use "Uncategorized" only if truly unclear.
+- Use "Transfer" for Zelle, ATM cash withdrawals, ACH/card payments, and transfers between accounts.
+- Use "Subscriptions" for recurring services, app stores, and software memberships.
+- Never label a negative amount as "Income".
+- Categorize the merchant/service, not generic card-network wording.
+- If the merchant is unclear, choose "Uncategorized" instead of guessing.
 - Return ONLY a JSON array of category strings, one per transaction, in the same order.
 
 Transactions:
@@ -157,7 +164,11 @@ def llm_categorize(items: list[dict], allowed: list[str]) -> list[str] | None:
     )
     prompt = _CATEGORIZE_PROMPT.format(categories=", ".join(allowed), lines=lines)
     try:
-        client = OpenAI(api_key=settings.openai_api_key)
+        client = OpenAI(
+            api_key=settings.openai_api_key,
+            timeout=45.0,
+            max_retries=0,
+        )
         resp = client.chat.completions.create(
             model=settings.openai_model,
             temperature=0,
@@ -176,7 +187,11 @@ def extract_transactions_from_text(text: str) -> list[dict]:
     from openai import OpenAI
 
     settings = get_settings()
-    client = OpenAI(api_key=settings.openai_api_key)
+    client = OpenAI(
+        api_key=settings.openai_api_key,
+        timeout=45.0,
+        max_retries=0,
+    )
     try:
         resp = client.chat.completions.create(
             model=settings.openai_model,
@@ -185,5 +200,10 @@ def extract_transactions_from_text(text: str) -> list[dict]:
         )
         content = resp.choices[0].message.content or ""
         return parse_llm_json(content)
-    except Exception:  # noqa: BLE001 - fallback must never crash the request
+    except Exception as exc:  # noqa: BLE001 - fallback must never crash the request
+        logger.warning(
+            "OpenAI transaction extraction failed (%s, status=%s)",
+            type(exc).__name__,
+            getattr(exc, "status_code", None),
+        )
         return []

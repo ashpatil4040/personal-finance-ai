@@ -93,6 +93,25 @@ Open `http://localhost:5173` and sign in with the demo login below.
 `demo@financeai.app` / `demo1234` — pre-filled on the sign-in screen. A sample
 statement to try the upload flow lives at `backend/sample_statement.csv`.
 
+## Deploy (free, permanent)
+
+| Piece | Host | Why |
+|-------|------|-----|
+| Database | [Neon](https://neon.tech) free Postgres | Free forever, pgvector included |
+| API | Render free web service | Sleeps when idle (cold start ~30-60s) |
+| Frontend | Render free static site | Free forever |
+| CI/CD | GitHub Actions + Render `checksPass` | Render deploys only after CI is green |
+
+1. **Neon**: create a project, copy the connection string (`postgresql://...?sslmode=require`).
+2. **Render**: *New > Blueprint*, pick this repo (uses [render.yaml](render.yaml)). Fill in:
+   - `finance-api`: `PFAI_DATABASE_URL` (Neon string), `OPENAI_API_KEY`, and `PFAI_CORS_ORIGINS` (the `finance-ui` URL).
+   - `finance-ui`: `VITE_API_URL` (the `finance-api` URL).
+   `PFAI_SECRET_KEY` is generated automatically; tables and the pgvector extension are created on first start.
+3. **GitHub**: Settings > Secrets and variables > Actions > *Variables* > add `BACKEND_URL` (the API URL) so [keep-alive.yml](.github/workflows/keep-alive.yml) pings it every 10 minutes.
+4. Optional demo data: with `PFAI_DATABASE_URL` set to the Neon string, run `python -m app.seed` from `backend/`.
+
+Every PR runs [ci.yml](.github/workflows/ci.yml) (backend tests against a pgvector Postgres + frontend build); merging to `main` redeploys both services once checks pass.
+
 ## API
 
 | Method | Path                       | Description                              |

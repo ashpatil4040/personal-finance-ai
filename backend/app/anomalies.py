@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from .models import Transaction
 
-_SKIP_OUTLIER_CATEGORIES = {"Income", "Housing"}
+_SKIP_OUTLIER_CATEGORIES = {"Income", "Housing", "Transfer"}
 _DUPLICATE_WINDOW_DAYS = 2
 _OUTLIER_MIN_ABS = 75.0
 _OUTLIER_MULTIPLIER = 3.0
@@ -60,7 +60,7 @@ def detect_from_txns(txns) -> list[dict]:
     # --- Duplicates: same merchant + amount within a few days (not monthly) ---
     groups: dict[tuple[str, float], list] = defaultdict(list)
     for t in txns:
-        if t.amount >= 0:
+        if t.amount >= 0 or t.category == "Transfer":
             continue
         groups[(_norm_desc(t.description), round(t.amount, 2))].append(t)
     for (_desc, _amt), rows in groups.items():

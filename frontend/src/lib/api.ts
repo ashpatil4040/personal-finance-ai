@@ -27,6 +27,10 @@ export interface Transaction {
   category: string;
   account_id: number | null;
   statement_id: number | null;
+  source_filename: string | null;
+  account_name: string | null;
+  account_type: string | null;
+  account_institution: string | null;
 }
 
 export interface Insights {
@@ -106,6 +110,9 @@ class ApiError extends Error {
   }
 }
 
+// Empty in dev (Vite proxies /api); set VITE_API_URL to the backend origin in production.
+const API_BASE = ((import.meta.env.VITE_API_URL as string | undefined) ?? "").replace(/\/$/, "");
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = tokenStore.get();
   const headers = new Headers(options.headers);
@@ -114,7 +121,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(path, { ...options, headers });
+  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (res.status === 204) return undefined as T;
 
   const data = await res.json().catch(() => ({}));
@@ -139,6 +146,8 @@ export const api = {
   me: () => request<User>("/api/auth/me"),
 
   listAccounts: () => request<Account[]>("/api/accounts"),
+  createAccount: (body: { name: string; type: string; institution: string }) =>
+    request<Account>("/api/accounts", { method: "POST", body: JSON.stringify(body) }),
 
   listTransactions: (params?: { category?: string; account_id?: number }) => {
     const q = new URLSearchParams();

@@ -41,6 +41,6 @@ def ask(
     return schemas.AskResponse(
         answer=result["answer"],
         tools_used=result["tools_used"],
-        grounded=True,
+        grounded=bool(result["tools_used"]),
         agent=result.get("agent", "analytics"),
     )

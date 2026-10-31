@@ -12,14 +12,16 @@ from collections import defaultdict
 from typing import Iterable
 
 CATEGORY_KEYWORDS: dict[str, list[str]] = {
-    "Groceries": ["grocery", "supermarket", "whole foods", "trader joe", "aldi", "safeway", "market", "kroger", "costco"],
-    "Dining": ["restaurant", "cafe", "coffee", "starbucks", "mcdonald", "pizza", "bar ", "diner", "grubhub", "doordash", "uber eats", "chipotle"],
-    "Transport": ["uber", "lyft", "gas", "shell", "chevron", "fuel", "metro", "transit", "parking", "toll", "exxon"],
+    "Groceries": ["grocery", "supermarket", "whole foods", "trader joe", "aldi", "safeway", "market", "kroger", "costco", "supercenter", "fresh market", "indian express fresh"],
+    "Dining": ["restaurant", "cafe", "coffee", "starbucks", "mcdonald", "pizza", "bar ", "diner", "grubhub", "doordash", "uber eats", "chipotle", "bestea", "peri peri", "masala dabba", "subway", "chiya chai"],
+    "Transport": ["uber", "lyft", "gas", "shell", "chevron", "fuel", "metro", "transit", "parking", "toll", "exxon", "spothero", "tollway", "bp#", "bp "],
     "Housing": ["rent", "mortgage", "landlord", "hoa"],
     "Utilities": ["electric", "water bill", "internet", "comcast", "verizon", "at&t", "utility", "phone", "t-mobile"],
-    "Entertainment": ["netflix", "spotify", "hulu", "disney", "cinema", "movie", "game", "steam", "concert", "hbo"],
+    "Entertainment": ["cinema", "movie", "game", "steam", "concert", "zoo"],
+    "Subscriptions": ["apple.com/bill", "github", "cursor ai", "netflix", "spotify", "hulu", "disney", "hbo", "recurring debit"],
     "Shopping": ["amazon", "target", "walmart", "store", "mall", "clothing", "nike", "best buy", "ebay"],
     "Health": ["pharmacy", "cvs", "walgreens", "doctor", "dental", "gym", "fitness", "clinic", "hospital"],
+    "Transfer": ["zelle", "zel ", "online transfer", "transfer to", "transfer from", "ach payment", "achpayment", "electronic payment", "atm withdrawal", "cash withdrawal", "aspora", "rmtly"],
     "Income": ["salary", "payroll", "paycheck", "direct deposit", "deposit", "refund", "interest", "dividend"],
 }
 
@@ -30,7 +32,11 @@ CATEGORIES: list[str] = list(CATEGORY_KEYWORDS.keys()) + ["Uncategorized"]
 def rule_categorize(description: str, amount: float | None = None) -> str:
     """Deterministic keyword-based categorization (always available)."""
     text = (description or "").lower()
+    if any(keyword in text for keyword in CATEGORY_KEYWORDS["Transfer"]):
+        return "Transfer"
     for category, keywords in CATEGORY_KEYWORDS.items():
+        if category in {"Income", "Transfer"}:
+            continue
         if any(keyword in text for keyword in keywords):
             return category
     if amount is not None and amount > 0:
@@ -58,13 +64,18 @@ def categorize_batch(items: list[dict]) -> list[str]:
     if not llm.llm_available():
         return rule
 
-    predicted = llm.llm_categorize(items, CATEGORIES)
-    if not predicted or len(predicted) != len(items):
+    pending = [idx for idx, category in enumerate(rule) if category == "Uncategorized"]
+    if not pending:
         return rule
-    return [
-        p if p in CATEGORIES and p != "Uncategorized" else rule[idx]
-        for idx, p in enumerate(predicted)
-    ]
+    predicted = llm.llm_categorize([items[idx] for idx in pending], CATEGORIES)
+    if not predicted or len(predicted) != len(pending):
+        return rule
+    for idx, prediction in zip(pending, predicted):
+        amount = items[idx].get("amount")
+        if prediction in CATEGORIES and prediction != "Uncategorized":
+            if prediction != "Income" or amount is None or amount >= 0:
+                rule[idx] = prediction
+    return rule
 
 
 def _month_key(d) -> str:
@@ -75,13 +86,14 @@ def generate_insights(transactions: Iterable) -> dict:
     """Deterministic spending summary plus plain-language insights."""
     txns = list(transactions)
 
-    total_income = sum(t.amount for t in txns if t.amount > 0)
-    total_spending = sum(-t.amount for t in txns if t.amount < 0)
+    reportable = [t for t in txns if t.category != "Transfer"]
+    total_income = sum(t.amount for t in reportable if t.amount > 0)
+    total_spending = sum(-t.amount for t in reportable if t.amount < 0)
     net = total_income - total_spending
     savings_rate = (net / total_income * 100) if total_income > 0 else 0.0
 
     spending_by_category: dict[str, float] = defaultdict(float)
-    for t in txns:
+    for t in reportable:
         if t.amount < 0:
             spending_by_category[t.category] += -t.amount
     by_category = [
@@ -91,7 +103,7 @@ def generate_insights(transactions: Iterable) -> dict:
 
     monthly: dict[str, float] = defaultdict(float)
     monthly_counts: dict[str, int] = defaultdict(int)
-    for t in txns:
+    for t in reportable:
         if t.amount < 0:
             key = _month_key(t.date)
             monthly[key] += -t.amount

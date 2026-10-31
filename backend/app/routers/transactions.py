@@ -7,7 +7,7 @@ from .. import schemas
 from ..auth import get_current_user
 from ..categorize import categorize
 from ..database import get_db
-from ..models import Account, Transaction, User
+from ..models import Account, Statement, Transaction, User
 
 router = APIRouter(prefix="/api/transactions", tags=["transactions"])
 
@@ -29,12 +29,37 @@ def list_transactions(
     current: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Transaction).filter(Transaction.user_id == current.id)
+    q = (
+        db.query(
+            Transaction,
+            Statement.filename,
+            Account.name,
+            Account.type,
+            Account.institution,
+        )
+        .outerjoin(Statement, Statement.id == Transaction.statement_id)
+        .outerjoin(
+            Account,
+            (Account.id == Transaction.account_id) & (Account.user_id == current.id),
+        )
+        .filter(Transaction.user_id == current.id)
+    )
     if account_id is not None:
         q = q.filter(Transaction.account_id == account_id)
     if category:
         q = q.filter(Transaction.category == category)
-    return q.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(limit).all()
+    rows = q.order_by(Transaction.date.desc(), Transaction.id.desc()).limit(limit).all()
+    return [
+        schemas.TransactionOut.model_validate(transaction).model_copy(
+            update={
+                "source_filename": filename,
+                "account_name": account_name,
+                "account_type": account_type,
+                "account_institution": institution,
+            }
+        )
+        for transaction, filename, account_name, account_type, institution in rows
+    ]
 
 
 @router.post("", response_model=schemas.TransactionOut, status_code=201)

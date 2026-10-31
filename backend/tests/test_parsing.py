@@ -9,9 +9,11 @@ from dataclasses import dataclass
 
 from app.categorize import CATEGORIES, categorize_batch, rule_categorize
 from app.digest import _deterministic_narrative, compute_facts_from_txns
-from app.ingest import parse_csv
+from app.ingest import CSVParseError, parse_csv
 from app.llm import parse_category_list, parse_llm_json
+from app import pdf_ingest
 from app.pdf_ingest import parse_pdf_heuristic
+from app.routers import uploads
 
 
 @dataclass
@@ -40,6 +42,81 @@ def test_parse_csv_debit_credit_columns():
     assert rows[1]["amount"] == 20.00  # credit -> income
 
 
+def test_parse_csv_normalizes_bank_specific_headers_and_ignores_extra_columns():
+    csv = (
+        b"Transaction Date,Transaction Description,Amount,Category,Balance\n"
+        b"2026-08-03,Coffee,-5.50,Dining,120.00\n"
+    )
+    rows = parse_csv(csv)
+    assert rows == [{"date": date(2026, 8, 3), "description": "Coffee", "amount": -5.5}]
+
+
+def test_parse_csv_infers_unfamiliar_headers_without_using_balance():
+    csv = (
+        b"Posted On,Narrative,Net Movement,Available Balance\n"
+        b"2026-08-03,Coffee,-5.50,120.00\n"
+    )
+    rows = parse_csv(csv)
+    assert rows == [{"date": date(2026, 8, 3), "description": "Coffee", "amount": -5.5}]
+
+
+def test_parse_csv_rejects_ambiguous_unlabeled_numeric_columns():
+    csv = b"Date,What,First,Second\n2026-08-03,Coffee,5.50,120.00\n"
+    try:
+        parse_csv(csv)
+    except CSVParseError as exc:
+        assert "amount" in str(exc)
+    else:
+        raise AssertionError("ambiguous amount columns should not be guessed")
+
+
+def test_csv_upload_uses_llm_when_parser_cannot_parse(monkeypatch):
+    expected = [
+        {"date": date(2026, 8, 3), "description": "Coffee", "amount": -5.5}
+    ]
+    monkeypatch.setattr(
+        uploads.llm,
+        "extract_transactions_from_text",
+        lambda text: expected,
+    )
+
+    rows, method = uploads._extract_rows(
+        "statement.csv",
+        b"Txn Date,Merchant,Local Currency Amount\n"
+        b"not-a-date,Coffee,USD 5.50\n",
+    )
+
+    assert rows == expected
+    assert method == "csv-llm"
+
+
+def test_pdf_upload_explains_scanned_pdf_when_no_text(monkeypatch):
+    monkeypatch.setattr(uploads, "parse_pdf_heuristic", lambda content: [])
+    monkeypatch.setattr(uploads.llm, "llm_available", lambda: True)
+    monkeypatch.setattr(uploads, "extract_text", lambda content: "  ")
+
+    try:
+        uploads._extract_rows("statement.pdf", b"pdf bytes")
+    except CSVParseError as exc:
+        assert "no selectable text" in str(exc)
+    else:
+        raise AssertionError("image-only PDFs should explain the unsupported format")
+
+
+def test_pdf_upload_distinguishes_configured_ai_failure(monkeypatch):
+    monkeypatch.setattr(uploads, "parse_pdf_heuristic", lambda content: [])
+    monkeypatch.setattr(uploads.llm, "llm_available", lambda: True)
+    monkeypatch.setattr(uploads, "extract_text", lambda content: "statement text")
+    monkeypatch.setattr(uploads.llm, "extract_transactions_from_text", lambda text: [])
+
+    try:
+        uploads._extract_rows("statement.pdf", b"pdf bytes")
+    except CSVParseError as exc:
+        assert "AI extraction couldn't find transactions" in str(exc)
+    else:
+        raise AssertionError("unreadable PDF text should report an extraction failure")
+
+
 def test_pdf_heuristic_reads_sample_statement():
     with open(SAMPLE_PDF, "rb") as fh:
         rows = parse_pdf_heuristic(fh.read())
@@ -47,6 +124,30 @@ def test_pdf_heuristic_reads_sample_statement():
     assert rows[0]["description"] == "Monthly Salary Payroll"
     assert rows[0]["amount"] == 4200.00
     assert rows[1]["amount"] == -1500.00
+
+
+def test_pdf_heuristic_parses_sectioned_rows_with_partial_dates(monkeypatch):
+    text = """Statement period 08/12/2026 to 09/10/2026
+Deposits and Other Additions
+Date Amount Description
+08/14 3,237.51 Payroll Deposit
+Banking/Debit Card Withdrawals and Purchases
+08/15 20.72 Fuel Station
+Online and Electronic Banking Deductions
+09/02 32.58 Card Payment
+Daily Balance Detail
+09/02 426.68
+"""
+    monkeypatch.setattr(pdf_ingest, "_rows_from_tables", lambda content: [])
+    monkeypatch.setattr(pdf_ingest, "extract_text", lambda content: text)
+
+    rows = parse_pdf_heuristic(b"pdf bytes")
+
+    assert rows == [
+        {"date": date(2026, 8, 14), "description": "Payroll Deposit", "amount": 3237.51},
+        {"date": date(2026, 8, 15), "description": "Fuel Station", "amount": -20.72},
+        {"date": date(2026, 9, 2), "description": "Card Payment", "amount": -32.58},
+    ]
 
 
 def test_llm_parse_plain_array():
@@ -99,6 +200,54 @@ def test_categorize_batch_falls_back_to_rules_without_llm():
     assert cats[0] == "Dining"
     assert cats[1] == "Income"
     assert cats[2] == rule_categorize("Zzzxyz Unknownmerchant", -10.0)
+
+
+def test_categorize_batch_never_marks_spending_as_income(monkeypatch):
+    monkeypatch.setattr("app.llm.llm_available", lambda: True)
+    monkeypatch.setattr("app.llm.llm_categorize", lambda items, allowed: ["Income"])
+
+    categories = categorize_batch(
+        [{"description": "Mystery Merchant", "amount": -73.10}]
+    )
+
+    assert categories == ["Uncategorized"]
+
+
+def test_known_merchants_use_rules_before_llm(monkeypatch):
+    monkeypatch.setattr("app.llm.llm_available", lambda: True)
+    monkeypatch.setattr(
+        "app.llm.llm_categorize",
+        lambda items, allowed: ["Dining"] * len(items),
+    )
+    items = [
+        {"description": "2125 Debit Card Purchase BP#1682731", "amount": -20.0},
+        {"description": "2125 Debit Card Purchase SpotHero", "amount": -12.0},
+        {"description": "2125 Recurring Debit Card Apple.Com/Bill", "amount": -3.0},
+        {"description": "Zel From Payer", "amount": 30.0},
+        {"description": "Direct Deposit Payroll", "amount": 3200.0},
+    ]
+
+    assert categorize_batch(items) == [
+        "Transport",
+        "Transport",
+        "Subscriptions",
+        "Transfer",
+        "Income",
+    ]
+
+
+def test_insights_exclude_transfers_from_income_and_spending():
+    txns = [
+        _T(date(2026, 8, 1), 3000.0, "Income"),
+        _T(date(2026, 8, 2), -2500.0, "Transfer"),
+        _T(date(2026, 8, 3), 2500.0, "Transfer"),
+        _T(date(2026, 8, 4), -100.0, "Groceries"),
+    ]
+
+    facts = compute_facts_from_txns(txns)
+
+    assert facts["income"] == 3000.0
+    assert facts["total_spending"] == 100.0
 
 
 def test_digest_month_over_month_facts():

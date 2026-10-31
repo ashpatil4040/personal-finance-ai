@@ -131,6 +131,82 @@ def _rows_from_text(content: bytes) -> list[dict]:
             desc = pattern.sub("", desc, count=1)
         desc = desc.strip(" \t-|") or "(no description)"
         rows.append({"date": d, "description": desc[:255], "amount": round(float(amount), 2)})
+    return rows or _rows_from_sectioned_text(text)
+
+
+def _rows_from_sectioned_text(text: str) -> list[dict]:
+    """Parse statement tables with MM/DD dates and section-implied signs."""
+    year_match = re.search(r"\b\d{1,2}/\d{1,2}/(\d{4})\b", text)
+    if not year_match:
+        return []
+    default_year = int(year_match.group(1))
+    section_sign: int | None = None
+    rows: list[dict] = []
+    can_continue_description = False
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        lowered = line.lower()
+        if not line:
+            continue
+        if "daily balance detail" in lowered:
+            section_sign = None
+            can_continue_description = False
+            continue
+        if any(term in lowered for term in (
+            "withdrawals and purchases",
+            "electronic banking deductions",
+            "other deductions",
+        )):
+            section_sign = -1
+            can_continue_description = False
+            continue
+        if any(term in lowered for term in ("deposits and other additions", "deposits", "credits")):
+            section_sign = 1
+            can_continue_description = False
+            continue
+        if section_sign is None:
+            continue
+
+        date_match = re.match(r"^(\d{1,2}/\d{1,2}(?:/\d{2,4})?)\s+(.+)$", line)
+        if date_match:
+            date_parts = date_match.group(1).split("/")
+            if len(date_parts) == 2:
+                date_parts.append(str(default_year))
+            try:
+                transaction_date = date(
+                    int(date_parts[2]), int(date_parts[0]), int(date_parts[1])
+                )
+            except ValueError:
+                can_continue_description = False
+                continue
+
+            amount_and_description = date_match.group(2).split(maxsplit=1)
+            if len(amount_and_description) != 2:
+                can_continue_description = False
+                continue
+            amount = _to_float(amount_and_description[0])
+            if amount is None:
+                can_continue_description = False
+                continue
+            rows.append(
+                {
+                    "date": transaction_date,
+                    "description": amount_and_description[1][:255],
+                    "amount": round(abs(amount) * section_sign, 2),
+                }
+            )
+            can_continue_description = True
+            continue
+
+        if lowered.startswith(("date amount description", "there were", "page ")):
+            can_continue_description = False
+            continue
+        if can_continue_description and rows:
+            rows[-1]["description"] = (
+                f"{rows[-1]['description']} {line}"[:255]
+            )
+
     return rows
 
 

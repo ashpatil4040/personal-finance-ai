@@ -14,6 +14,18 @@ from ..pdf_ingest import extract_text, parse_pdf_heuristic
 router = APIRouter(prefix="/api/uploads", tags=["uploads"])
 
 
+def _parse_csv(content: bytes) -> tuple[list[dict], str]:
+    try:
+        return parse_csv(content), "csv"
+    except CSVParseError:
+        text = content.decode("utf-8-sig", errors="replace")
+        if len(text) <= 12000:
+            rows = llm.extract_transactions_from_text(text)
+            if rows:
+                return rows, "csv-llm"
+        raise
+
+
 def _extract_rows(filename: str, content: bytes) -> tuple[list[dict], str]:
     """Return (rows, method) for a supported statement file.
 
@@ -23,21 +35,29 @@ def _extract_rows(filename: str, content: bytes) -> tuple[list[dict], str]:
     """
     name = filename.lower()
     if name.endswith(".csv"):
-        return parse_csv(content), "csv"
+        return _parse_csv(content)
 
     if name.endswith(".pdf"):
         rows = parse_pdf_heuristic(content)
         if rows:
             return rows, "pdf-heuristic"
-        # Heuristics failed — try the LLM fallback if it's turned on.
-        if llm.llm_available():
-            rows = llm.extract_transactions_from_text(extract_text(content))
-            if rows:
-                return rows, "pdf-llm"
+        if not llm.llm_available():
+            raise CSVParseError(
+                "Local PDF parsing found no transactions, and AI extraction "
+                "isn't available. Check PFAI_LLM_ENABLED and the OpenAI API key."
+            )
+        text = extract_text(content)
+        if not text.strip():
+            raise CSVParseError(
+                "This PDF contains no selectable text. Scanned/image-only PDFs "
+                "aren't supported yet; try a text-based PDF or CSV export."
+            )
+        rows = llm.extract_transactions_from_text(text)
+        if rows:
+            return rows, "pdf-llm"
         raise CSVParseError(
-            "Could not read transactions from this PDF. If it is an unusual "
-            "format, enable AI extraction (set PFAI_LLM_ENABLED with an OpenAI "
-            "API key) and try again."
+            "AI extraction couldn't find transactions in the PDF text. Check "
+            "the backend log for a safe OpenAI error summary, or try a CSV export."
         )
 
     raise CSVParseError("Unsupported file type. Upload a .csv or .pdf statement.")
