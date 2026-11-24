@@ -83,15 +83,28 @@ npm install
 npm run dev                        # http://localhost:5173 (proxies /api to :8000)
 ```
 
-Open `http://localhost:5173` and sign in with the demo login below.
+Open `http://localhost:5173`, then create an account (or sign in with the optional demo login below).
 
 > On Linux you can alternatively run `bash .cursor/install.sh`, which installs
 > Postgres + pgvector via `apt` and both stacks in one step (needs `sudo`).
 
-### Demo login
+### Demo login (optional)
 
-`demo@financeai.app` / `demo1234` — pre-filled on the sign-in screen. A sample
+Running `python -m app.seed` creates a demo user (`demo@financeai.app` /
+`demo1234`, configurable via `PFAI_DEMO_EMAIL` / `PFAI_DEMO_PASSWORD`) with
+sample data. Enter these credentials manually on the sign-in screen. A sample
 statement to try the upload flow lives at `backend/sample_statement.csv`.
+
+## App features
+
+The frontend has four views after sign-in:
+
+- **Dashboard** — summary stat cards, spending charts, insights, anomaly alerts,
+  the proactive monthly digest, and recent transactions.
+- **Transactions** — every transaction, auto-categorized, with delete.
+- **Upload** — import CSV or PDF statements into an account.
+- **Ask AI** — natural-language questions routed to analytics, anomaly,
+  research, or general-advisor agents (requires an OpenAI key).
 
 ## Deploy (free, permanent)
 
@@ -120,8 +133,9 @@ Every PR runs [ci.yml](.github/workflows/ci.yml) (backend tests against a pgvect
 | POST   | `/api/auth/login`          | Log in, returns JWT                      |
 | GET    | `/api/auth/me`             | Current user                             |
 | GET    | `/api/accounts`            | List accounts (scoped to user)          |
+| POST   | `/api/accounts`            | Create an account                        |
 | POST   | `/api/uploads`             | Upload a CSV or PDF statement (multipart) |
-| GET    | `/api/transactions`        | List transactions (filters: category, account) |
+| GET    | `/api/transactions`        | List transactions (filters: `category`, `account_id`, `limit`) |
 | POST   | `/api/transactions`        | Add a transaction (auto-categorized)     |
 | DELETE | `/api/transactions/{id}`   | Delete a transaction                     |
 | GET    | `/api/insights`            | Summary, breakdowns, and insights        |
