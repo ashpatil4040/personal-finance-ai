@@ -13,8 +13,8 @@ export function AuthPage() {
   const { login, register } = useAuth();
   const [busy, setBusy] = useState(false);
 
-  const [loginEmail, setLoginEmail] = useState("demo@financeai.app");
-  const [loginPassword, setLoginPassword] = useState("demo1234");
+  const [loginEmail, setLoginEmail] =   useState("");
+    const [loginPassword, setLoginPassword] = useState("");
 
   const [regName, setRegName] = useState("");
   const [regEmail, setRegEmail] = useState("");
@@ -64,9 +64,7 @@ export function AuthPage() {
             breakdowns, and plain-language insights — no spreadsheets required.
           </p>
         </div>
-        <p className="text-primary-foreground/60 text-sm">
-          Phase 1 · Foundation build
-        </p>
+        <div />
       </div>
 
       <div className="flex items-center justify-center p-6 sm:p-12">
@@ -110,9 +108,6 @@ export function AuthPage() {
                   <Button type="submit" className="w-full" disabled={busy}>
                     {busy ? "Signing in…" : "Sign in"}
                   </Button>
-                  <p className="text-xs text-muted-foreground text-center">
-                    Demo account is pre-filled — just click Sign in.
-                  </p>
                 </form>
               </TabsContent>
 
